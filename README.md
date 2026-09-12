@@ -1,8 +1,11 @@
 # photoface
 
-A desktop app (PySide6) that scans a folder (recursively) for photos, detects
-faces with OpenCV, clusters them into persons, and lets you browse and filter
-your library by person, tag, location, or possible duplicates.
+Every "photo organizer" I tried wanted my library in its cloud before it
+would tell me which faces belonged together. photoface doesn't — it's a
+desktop app (PySide6) that points at a folder on your disk, runs face
+detection and clustering entirely locally, and lets you browse and filter
+by person, tag, location, or possible duplicate. Nothing leaves the
+machine because there's no server for it to leave to.
 
 ## Screenshots
 
@@ -143,10 +146,15 @@ runners, before anything is attached to a release.
 ## Not yet built (ideas for a v2)
 
 - A dedicated "review duplicates" flow (e.g. pick-one-to-keep, bulk delete)
-  beyond just filtering the gallery down to the duplicate groups.
+  beyond just filtering the gallery down to the duplicate groups. Right now
+  the app is honest about *which* photos are near-duplicates and gets out
+  of the way of the decision about which one to keep — that's a conscious
+  scope cut, not an oversight, but it's the first thing worth building next.
 - Automated GUI interaction tests (the GUI is currently verified manually
   under an offscreen Qt platform, screenshotted and inspected, rather than
-  covered by `pytest`).
+  covered by `pytest`). The clustering math and the database are the parts
+  I'd actually lose sleep over being wrong, so that's where the automated
+  coverage went first.
 
 ---
 
