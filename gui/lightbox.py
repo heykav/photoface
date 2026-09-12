@@ -4,7 +4,7 @@ import webbrowser
 from typing import Optional
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QFont, QKeySequence, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QDialog, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsScene,
     QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout, QInputDialog, QLabel,
@@ -59,8 +59,8 @@ class LightboxDialog(QDialog):
         self.meta_label = QLabel()
         self.meta_label.setStyleSheet("padding: 8px; color: #9a9ca1;")
         top_bar.addWidget(self.meta_label)
-        close_btn = QPushButton("✕")
-        close_btn.setFixedWidth(36)
+        close_btn = QPushButton("Close")
+        close_btn.setObjectName("ghost")
         close_btn.clicked.connect(self.close)
         top_bar.addWidget(close_btn)
         layout.addLayout(top_bar)
@@ -162,9 +162,25 @@ class LightboxDialog(QDialog):
         self.scene.addItem(rect_item)
 
         if face.get("name"):
+            # a solid chip behind the name, not just colored text directly on
+            # the photo - legibility against a face box color that can be
+            # close to the photo's own colors otherwise.
+            font = QFont()
+            font.setPixelSize(max(12, int(face["h"] * 0.09)))
+            font.setWeight(QFont.DemiBold)
             label = QGraphicsSimpleTextItem(face["name"])
-            label.setBrush(QBrush(color))
-            label.setPos(face["x"], face["y"] + face["h"] + 2)
+            label.setFont(font)
+            label.setBrush(QBrush(QColor("white")))
+            label_rect = label.boundingRect()
+            pad_x, pad_y = 6, 3
+            chip = QGraphicsRectItem(
+                face["x"], face["y"] + face["h"] + 4,
+                label_rect.width() + pad_x * 2, label_rect.height() + pad_y * 2,
+            )
+            chip.setBrush(QBrush(color))
+            chip.setPen(Qt.NoPen)
+            self.scene.addItem(chip)
+            label.setPos(face["x"] + pad_x, face["y"] + face["h"] + 4 + pad_y)
             self.scene.addItem(label)
 
         rect_item.setAcceptHoverEvents(True)

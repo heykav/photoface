@@ -9,3 +9,5 @@ models/
 thumbcache/
 *.log
 .pytest_cache/
+build/
+dist/

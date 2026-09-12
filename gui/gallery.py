@@ -3,12 +3,13 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QGridLayout, QScrollArea, QSizePolicy, QWidget
+from PySide6.QtWidgets import QGridLayout, QLabel, QScrollArea, QSizePolicy, QWidget
 
 from gui.photo_card import PhotoCard
+from gui.theme import TEXT_MUTED
 
-CARD_W = 180
-CARD_SPACING = 12
+CARD_W = 190
+CARD_SPACING = 16
 
 
 class Gallery(QScrollArea):
@@ -23,13 +24,22 @@ class Gallery(QScrollArea):
         self._content = QWidget()
         self._grid = QGridLayout(self._content)
         self._grid.setSpacing(CARD_SPACING)
-        self._grid.setContentsMargins(12, 12, 12, 12)
+        self._grid.setContentsMargins(20, 20, 20, 20)
         self.setWidget(self._content)
 
         self._cards: list[PhotoCard] = []
         self._selected_id: Optional[int] = None
         self._aspect = "3:4"
         self._show_face_boxes = True
+
+        self._empty_label = QLabel(
+            "No photos here yet.\n\nPick a folder above and press Analyze,"
+            " or clear the current filters."
+        )
+        self._empty_label.setAlignment(Qt.AlignCenter)
+        self._empty_label.setStyleSheet(
+            f"color: {TEXT_MUTED}; font-size: 14px; padding: 60px;"
+        )
 
     def set_view_options(self, aspect: str, show_face_boxes: bool) -> None:
         self._aspect = aspect
@@ -43,6 +53,15 @@ class Gallery(QScrollArea):
             card.setParent(None)
             card.deleteLater()
         self._cards = []
+        self._grid.removeWidget(self._empty_label)
+        self._empty_label.setParent(None)
+
+        if not photos_with_faces:
+            self._grid.addWidget(self._empty_label, 0, 0)
+            self._empty_label.setParent(self._content)
+            self._empty_label.show()
+            self._selected_id = None
+            return
 
         for photo_row, faces, tag_colors in photos_with_faces:
             card = PhotoCard(photo_row, faces, tag_colors,

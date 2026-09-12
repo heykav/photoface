@@ -65,10 +65,17 @@ class MainWindow(QMainWindow):
         outer.setSpacing(0)
 
         top = QWidget()
+        top.setObjectName("topBar")
         top_layout = QHBoxLayout(top)
-        top_layout.setContentsMargins(10, 10, 10, 10)
+        top_layout.setContentsMargins(16, 12, 16, 12)
+        top_layout.setSpacing(10)
+
+        title = QLabel("photoface")
+        title.setObjectName("appTitle")
+
         self.folder_edit = QLineEdit()
         self.folder_edit.setPlaceholderText("Pick a folder of photos to analyze…")
+        self.folder_edit.setMinimumWidth(260)
         browse_btn = QPushButton("Browse…")
         browse_btn.clicked.connect(self._browse_folder)
         self.analyze_btn = QPushButton("Analyze")
@@ -76,15 +83,19 @@ class MainWindow(QMainWindow):
         self.analyze_btn.clicked.connect(self._start_analysis)
         self.progress = QProgressBar()
         self.progress.setVisible(False)
-        self.progress.setFixedWidth(220)
+        self.progress.setFixedWidth(180)
         settings_btn = QPushButton("Settings")
+        settings_btn.setObjectName("ghost")
         settings_btn.clicked.connect(self._open_settings)
 
-        top_layout.addWidget(QLabel("Folder:"))
+        top_layout.addWidget(title)
+        top_layout.addSpacing(16)
         top_layout.addWidget(self.folder_edit, stretch=1)
         top_layout.addWidget(browse_btn)
         top_layout.addWidget(self.analyze_btn)
+        top_layout.addSpacing(4)
         top_layout.addWidget(self.progress)
+        top_layout.addStretch()
         top_layout.addWidget(settings_btn)
         outer.addWidget(top)
 
@@ -113,9 +124,15 @@ class MainWindow(QMainWindow):
 
         outer.addWidget(body, stretch=1)
 
+        status_bar = QWidget()
+        status_bar.setObjectName("statusBar")
+        status_layout = QHBoxLayout(status_bar)
+        status_layout.setContentsMargins(16, 6, 16, 6)
         self.status = QLabel("")
-        self.status.setStyleSheet("color: #9a9ca1; padding: 4px 10px;")
-        outer.addWidget(self.status)
+        self.status.setObjectName("photoCount")
+        status_layout.addWidget(self.status)
+        status_layout.addStretch()
+        outer.addWidget(status_bar)
 
     def _load_settings(self) -> None:
         settings = get_settings()

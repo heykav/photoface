@@ -106,10 +106,33 @@ GUI tests in this v1.
   threshold, folder watching, log verbosity) are stored with Qt `QSettings`
   under the `photoface` organization/app name.
 
+## Packaged executables
+
+`.github/workflows/build.yml` builds macOS/Linux/Windows executables (via
+PyInstaller, `photoface.spec`) and attaches them as a draft GitHub release
+whenever a `v*` tag is pushed. Build locally with:
+
+```bash
+pip install pyinstaller
+python scripts/download_models.py
+pyinstaller photoface.spec
+```
+
+The macOS `.app` path was built and launch-tested locally (starts, detects
+it's frozen, writes its database under `~/.photoface/` as designed, finds its
+bundled model files under `Contents/Resources/models/`). The plain onedir
+output used for Windows/Linux follows standard PyInstaller practice for
+those platforms but is only actually exercised by CI, on real Windows/Linux
+runners, before anything is attached to a release.
+
 ## Not yet built (ideas for a v2)
 
-- Packaged standalone executables (PyInstaller).
 - A dedicated "review duplicates" flow (e.g. pick-one-to-keep, bulk delete)
   beyond just filtering the gallery down to the duplicate groups.
 - Automated GUI interaction tests (the GUI is currently verified manually
-  under an offscreen Qt platform rather than covered by `pytest`).
+  under an offscreen Qt platform, screenshotted and inspected, rather than
+  covered by `pytest`).
+
+---
+
+Made with ❤️ in India by Krishna Anubhav.

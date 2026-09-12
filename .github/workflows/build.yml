@@ -1,0 +1,57 @@
+name: build
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: photoface-macOS
+          - os: ubuntu-latest
+            artifact: photoface-Linux
+          - os: windows-latest
+            artifact: photoface-Windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: python scripts/download_models.py
+      - run: pyinstaller photoface.spec --noconfirm
+
+      - name: Package (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd dist
+          zip -r ../${{ matrix.artifact }}.zip photoface.app
+      - name: Package (Linux/Windows)
+        if: matrix.os != 'macos-latest'
+        shell: bash
+        run: |
+          cd dist
+          zip -r ../${{ matrix.artifact }}.zip photoface
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*/*.zip
+          draft: true

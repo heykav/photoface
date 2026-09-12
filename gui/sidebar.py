@@ -36,11 +36,12 @@ class Sidebar(QWidget):
     def __init__(self, db: Database, parent=None):
         super().__init__(parent)
         self.db = db
-        self.setFixedWidth(240)
+        self.setObjectName("sidebarPanel")
+        self.setFixedWidth(260)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(14, 8, 14, 14)
+        layout.setSpacing(4)
 
         layout.addWidget(self._header("People"))
         self.people_list = QListWidget()
@@ -63,6 +64,7 @@ class Sidebar(QWidget):
         self.tags_list.customContextMenuRequested.connect(self._tag_context_menu)
         layout.addWidget(self.tags_list, stretch=1)
 
+        layout.addWidget(self._header("Filters"))
         self.geotag_check = QCheckBox("Geotagged only")
         self.geotag_check.toggled.connect(self.geotag_toggled.emit)
         layout.addWidget(self.geotag_check)
