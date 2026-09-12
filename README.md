@@ -4,6 +4,21 @@ A desktop app (PySide6) that scans a folder (recursively) for photos, detects
 faces with OpenCV, clusters them into persons, and lets you browse and filter
 your library by person, tag, location, or possible duplicates.
 
+## Screenshots
+
+Gallery with per-person colored face boxes, tag dots, and the people/tags
+sidebar:
+
+![Gallery](screenshots/gallery.png)
+
+Full-size lightbox view of a photo with the detected face outlined and
+named, plus capture date and GPS coordinates:
+
+![Lightbox](screenshots/lightbox.png)
+
+(Both captured from the app itself with synthetic placeholder photos - your
+own library will show your actual photos and faces in their place.)
+
 ## Features
 
 - Recursively scans a folder for jpg/jpeg/png/webp/bmp/tiff images.
