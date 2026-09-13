@@ -1,5 +1,7 @@
 # photoface
 
+[![tests](https://github.com/heykav/photoface/actions/workflows/tests.yml/badge.svg)](https://github.com/heykav/photoface/actions/workflows/tests.yml)
+
 Every "photo organizer" I tried wanted my library in its cloud before it
 would tell me which faces belonged together. photoface doesn't — it's a
 desktop app (PySide6) that points at a folder on your disk, runs face
