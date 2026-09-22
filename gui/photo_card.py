@@ -6,7 +6,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect
 
-from gui.theme import BG_CARD, BORDER, TEXT, TEXT_MUTED
+from gui.theme import BG_CARD, BORDER, TEXT_MUTED
 from gui.thumbnails import get_thumbnail, scale_bbox_to_thumb
 
 RADIUS = 12

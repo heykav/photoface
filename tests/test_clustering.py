@@ -4,9 +4,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
-import pytest
 
-from clustering import FaceRecord, greedy_assign, recluster, DEFAULT_THRESHOLD
+from clustering import FaceRecord, greedy_assign, recluster
 
 
 def _vec(seed: int, noise: float = 0.0, dim: int = 8) -> np.ndarray:

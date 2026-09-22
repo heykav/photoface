@@ -3,12 +3,12 @@ from __future__ import annotations
 import webbrowser
 from typing import Optional
 
-from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QKeySequence, QPainter, QPen, QPixmap
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QDialog, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsScene,
-    QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout, QInputDialog, QLabel,
-    QMenu, QPushButton, QVBoxLayout, QWidget,
+    QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout, QLabel,
+    QMenu, QPushButton, QVBoxLayout,
 )
 
 from database import Database

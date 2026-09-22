@@ -3,11 +3,9 @@ re-decoding every full-size photo on every gallery paint."""
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 from typing import Optional
 
 from PIL import Image
-from PIL.ImageQt import ImageQt
 from PySide6.QtGui import QPixmap
 
 from paths import thumb_cache_dir

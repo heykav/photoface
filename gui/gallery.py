@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QGridLayout, QLabel, QScrollArea, QSizePolicy, QWidget
+from PySide6.QtWidgets import QGridLayout, QLabel, QScrollArea, QWidget
 
 from gui.photo_card import PhotoCard
 from gui.theme import TEXT_MUTED
