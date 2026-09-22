@@ -53,8 +53,8 @@ class TestFacesAndPersons:
     def test_create_and_assign_person(self, db):
         pid = db.upsert_photo("/a.jpg", 1.0, 1, 1, 1, None, None, None, 1.0)
         person_id = db.create_person("Alice", "#ff0000")
-        fid = db.add_face(pid, 0, 0, 10, 10, np.zeros(3, dtype=np.float32), 0.9,
-                          person_id=person_id)
+        db.add_face(pid, 0, 0, 10, 10, np.zeros(3, dtype=np.float32), 0.9,
+                    person_id=person_id)
         persons = db.all_persons()
         assert persons[0]["face_count"] == 1
         assert persons[0]["name"] == "Alice"
@@ -73,7 +73,7 @@ class TestFacesAndPersons:
     def test_delete_person_unassigns_faces(self, db):
         photo_id = db.upsert_photo("/a.jpg", 1.0, 1, 1, 1, None, None, None, 1.0)
         p1 = db.create_person("A", "#fff")
-        fid = db.add_face(photo_id, 0, 0, 1, 1, np.zeros(2, dtype=np.float32), 1.0, person_id=p1)
+        db.add_face(photo_id, 0, 0, 1, 1, np.zeros(2, dtype=np.float32), 1.0, person_id=p1)
         db.delete_person(p1)
         row = db.faces_for_photo(photo_id)[0]
         assert row["person_id"] is None
@@ -106,7 +106,7 @@ class TestTags:
 class TestFilteredQuery:
     def test_filter_by_person(self, db):
         p_id = db.upsert_photo("/a.jpg", 1.0, 1, 1, 1, None, None, None, 1.0)
-        p2_id = db.upsert_photo("/b.jpg", 1.0, 1, 1, 1, None, None, None, 1.0)
+        db.upsert_photo("/b.jpg", 1.0, 1, 1, 1, None, None, None, 1.0)
         person = db.create_person("Alice", "#fff")
         db.add_face(p_id, 0, 0, 1, 1, np.zeros(2, dtype=np.float32), 1.0, person_id=person)
         result = db.filtered_photos(person_ids=[person])
@@ -166,7 +166,7 @@ class TestDuplicateGroups:
 class TestFilteredQueryByTag:
     def test_filter_by_tag(self, db):
         p1 = db.upsert_photo("/a.jpg", 1.0, 1, 1, 1, None, None, None, 1.0)
-        p2 = db.upsert_photo("/b.jpg", 1.0, 1, 1, 1, None, None, None, 1.0)
+        db.upsert_photo("/b.jpg", 1.0, 1, 1, 1, None, None, None, 1.0)
         db.tag_photo(p1, "beach")
         tag_id = db.tags_for_photo(p1)[0]["id"]
         result = db.filtered_photos(tag_ids=[tag_id])

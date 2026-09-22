@@ -100,7 +100,7 @@ class Database:
                      width: int, height: int, exif_date: Optional[str],
                      exif_lat: Optional[float], exif_lon: Optional[float],
                      analyzed_at: float, phash: Optional[str] = None) -> int:
-        cur = self.conn.execute(
+        self.conn.execute(
             """INSERT INTO photos (path, mtime, size, width, height,
                                     exif_date, exif_lat, exif_lon, phash, analyzed_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -294,7 +294,7 @@ class Database:
                         geotagged_only: bool = False,
                         order_by: str = "path") -> list[sqlite3.Row]:
         col = "exif_date" if order_by == "date" else "path"
-        query = f"SELECT DISTINCT p.* FROM photos p"
+        query = "SELECT DISTINCT p.* FROM photos p"
         joins = []
         wheres = []
         params: list[Any] = []

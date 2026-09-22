@@ -282,7 +282,6 @@ class MainWindow(QMainWindow):
 
     def _show_tag_menu(self, photo_id: int) -> None:
         current = self.db.tags_for_photo(photo_id)
-        current_names = {t["name"] for t in current}
         menu = QMenu(self)
         add_action = menu.addAction("Add tag…")
         remove_actions = {}

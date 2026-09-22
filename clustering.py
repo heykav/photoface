@@ -165,7 +165,6 @@ def recluster(faces: List[FaceRecord],
         if ra is not None and d <= threshold_dist:
             uf.union(ra, rb)
             new_root = uf.find(ra)
-            old_root = rb if new_root == ra else ra
             merged_members = members[ra] + members[rb]
             aa, ab = anchor.get(ra), anchor.get(rb)
             merged_anchor = aa if aa is not None else ab
