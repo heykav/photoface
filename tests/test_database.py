@@ -123,20 +123,20 @@ class TestDuplicateGroups:
         return db.upsert_photo(path, 1.0, 1, 1, 1, None, None, None, 1.0, phash=phash)
 
     def test_identical_hashes_grouped(self, db):
-        self._photo(db, "/a.jpg", "0" * 16)
-        self._photo(db, "/b.jpg", "0" * 16)
+        self._photo(db, "/a.jpg", "1" + "0" * 15)
+        self._photo(db, "/b.jpg", "1" + "0" * 15)
         groups = db.duplicate_groups()
         assert len(groups) == 1
         assert len(groups[0]) == 2
 
     def test_close_hashes_grouped_within_threshold(self, db):
-        self._photo(db, "/a.jpg", "0000000000000000")
-        self._photo(db, "/b.jpg", "0000000000000003")  # 2 bits different
+        self._photo(db, "/a.jpg", "1000000000000000")
+        self._photo(db, "/b.jpg", "1000000000000003")  # 2 bits different
         groups = db.duplicate_groups(max_hamming_distance=4)
         assert len(groups) == 1
 
     def test_far_hashes_not_grouped(self, db):
-        self._photo(db, "/a.jpg", "0000000000000000")
+        self._photo(db, "/a.jpg", "1000000000000000")
         self._photo(db, "/b.jpg", "ffffffffffffffff")  # maximally different
         groups = db.duplicate_groups(max_hamming_distance=4)
         assert groups == []
@@ -147,7 +147,7 @@ class TestDuplicateGroups:
         assert db.duplicate_groups() == []
 
     def test_singletons_not_returned_as_groups(self, db):
-        self._photo(db, "/a.jpg", "0000000000000000")
+        self._photo(db, "/a.jpg", "1000000000000000")
         self._photo(db, "/b.jpg", "ffffffffffffffff")
         groups = db.duplicate_groups(max_hamming_distance=4)
         assert groups == []
@@ -155,9 +155,9 @@ class TestDuplicateGroups:
     def test_transitive_chain_groups_all_three(self, db):
         # a<->b close, b<->c close, a<->c not directly close enough alone -
         # union-find should still merge all three into one group.
-        self._photo(db, "/a.jpg", "0000000000000000")
-        self._photo(db, "/b.jpg", "0000000000000003")
-        self._photo(db, "/c.jpg", "000000000000000f")
+        self._photo(db, "/a.jpg", "1000000000000000")
+        self._photo(db, "/b.jpg", "1000000000000003")
+        self._photo(db, "/c.jpg", "100000000000000f")
         groups = db.duplicate_groups(max_hamming_distance=2)
         assert len(groups) == 1
         assert len(groups[0]) == 3

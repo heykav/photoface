@@ -15,15 +15,16 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional
 
 import cv2
 import numpy as np
-from PIL import Image, ExifTags
+from PIL import Image
 
 from clustering import (FaceRecord, DEFAULT_THRESHOLD, greedy_assign, recluster,
                         stabilize_assignment)
 from database import Database
+from exif_utils import extract_exif  # noqa: F401  (re-exported)
 from paths import models_dir
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff", ".tif"}
@@ -40,49 +41,18 @@ PERSON_COLORS = [
 ]
 
 
+def _raise(err: OSError) -> None:
+    raise err
+
+
 def iter_image_files(root: Path):
-    for dirpath, _dirnames, filenames in os.walk(root):
+    """Yield every image under `root`. Unreadable directories raise instead
+    of being skipped: a silently-skipped folder (e.g. an unmounted drive)
+    would otherwise look like 'those photos were deleted'."""
+    for dirpath, _dirnames, filenames in os.walk(root, onerror=_raise):
         for name in filenames:
             if Path(name).suffix.lower() in IMAGE_EXTS:
                 yield Path(dirpath) / name
-
-
-def _dms_to_decimal(dms, ref: str) -> Optional[float]:
-    try:
-        deg, minutes, seconds = dms
-        value = float(deg) + float(minutes) / 60.0 + float(seconds) / 3600.0
-    except (TypeError, ValueError, ZeroDivisionError):
-        return None
-    if ref in ("S", "W"):
-        value = -value
-    return value
-
-
-def extract_exif(path: Path) -> Tuple[Optional[str], Optional[float], Optional[float]]:
-    """Returns (capture_date_iso_or_None, lat_or_None, lon_or_None)."""
-    try:
-        img = Image.open(path)
-        exif = img.getexif()
-        if not exif:
-            return None, None, None
-    except Exception:  # noqa: BLE001
-        return None, None, None
-
-    tags = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
-    date = tags.get("DateTimeOriginal") or tags.get("DateTime")
-    if isinstance(date, str):
-        date = date.replace(":", "-", 2).replace(" ", "T", 1)
-
-    lat = lon = None
-    try:
-        gps_ifd = exif.get_ifd(0x8825)  # GPS IFD
-        gps = {ExifTags.GPSTAGS.get(k, k): v for k, v in gps_ifd.items()}
-        if "GPSLatitude" in gps and "GPSLongitude" in gps:
-            lat = _dms_to_decimal(gps["GPSLatitude"], gps.get("GPSLatitudeRef", "N"))
-            lon = _dms_to_decimal(gps["GPSLongitude"], gps.get("GPSLongitudeRef", "E"))
-    except Exception:  # noqa: BLE001
-        pass
-    return date, lat, lon
 
 
 def compute_phash(path: Path) -> Optional[str]:
@@ -162,6 +132,38 @@ class FaceEngine:
         return out
 
 
+def _iou(a, b) -> float:
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    ix = max(0.0, min(ax + aw, bx + bw) - max(ax, bx))
+    iy = max(0.0, min(ay + ah, by + bh) - max(ay, by))
+    inter = ix * iy
+    union = aw * ah + bw * bh - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _match_pinned(old_faces, detections, min_iou: float = 0.5) -> dict:
+    """When a photo is re-analyzed (its mtime/size changed), keep the user's
+    manual corrections: each previously *pinned* face is matched to the
+    re-detected face it overlaps most (IoU >= min_iou, one-to-one). Returns
+    {detection_index: old_face_row}. Unmatched pinned faces are dropped with
+    the old detections - the image changed under them."""
+    pinned = [f for f in old_faces if f["pinned"] and f["person_id"] is not None]
+    pairs = []
+    for f in pinned:
+        for k, d in enumerate(detections):
+            iou = _iou((f["x"], f["y"], f["w"], f["h"]), (d.x, d.y, d.w, d.h))
+            if iou >= min_iou:
+                pairs.append((-iou, f["id"], k, f))
+    pairs.sort(key=lambda t: t[:3])
+    out, used_old = {}, set()
+    for _neg, fid, k, f in pairs:
+        if k not in out and fid not in used_old:
+            out[k] = f
+            used_old.add(fid)
+    return out
+
+
 ProgressCB = Callable[[int, int, str], None]
 
 
@@ -194,6 +196,10 @@ class Analyzer:
 
     def analyze_folder(self, folder: Path, progress: Optional[ProgressCB] = None,
                        cancel_check: Optional[Callable[[], bool]] = None) -> None:
+        if not Path(folder).is_dir():
+            # never treat a missing/unmounted folder as "every photo was deleted"
+            raise FileNotFoundError(f"Photo folder not found: {folder}")
+        engine = self.engine  # fail fast (missing models) before touching anything
         files = list(iter_image_files(folder))
         total = len(files)
         self.db.delete_photos_not_in(str(f) for f in files)
@@ -221,23 +227,34 @@ class Analyzer:
             date, lat, lon = extract_exif(path)
             phash = compute_phash(path)
 
-            photo_id = self.db.upsert_photo(
-                str(path), st.st_mtime, st.st_size, w, h, date, lat, lon,
-                time.time(), phash=phash,
-            )
-            if existing is not None:
-                self.db.delete_photo_faces(photo_id)
-
             try:
-                detections = self.engine.detect_and_embed(image)
-            except Exception:  # noqa: BLE001 - a single bad image shouldn't abort the run
-                detections = []
+                detections = engine.detect_and_embed(image)
+            except Exception:  # noqa: BLE001 - one bad image shouldn't abort the run
+                # not recorded, so it is retried next run instead of being
+                # marked "analyzed, no faces" forever
+                continue
 
-            for det in detections:
-                face_id = self.db.add_face(
-                    photo_id, det.x, det.y, det.w, det.h, det.embedding, det.confidence
+            # One transaction per photo: a crash can never leave a photo
+            # marked analyzed (and so skipped next time) without its faces.
+            with self.db.transaction():
+                old_faces = self.db.faces_for_photo(existing["id"]) if existing else []
+                photo_id = self.db.upsert_photo(
+                    str(path), st.st_mtime, st.st_size, w, h, date, lat, lon,
+                    time.time(), phash=phash,
                 )
-                touched_new_face_ids.append(face_id)
+                if existing is not None:
+                    self.db.delete_photo_faces(photo_id)
+                inherited = _match_pinned(old_faces, detections)
+                for k, det in enumerate(detections):
+                    prev = inherited.get(k)
+                    face_id = self.db.add_face(
+                        photo_id, det.x, det.y, det.w, det.h, det.embedding,
+                        det.confidence,
+                        person_id=prev["person_id"] if prev else None,
+                        pinned=bool(prev),
+                    )
+                    if prev is None:
+                        touched_new_face_ids.append(face_id)
 
         if touched_new_face_ids:
             self._greedy_pass(touched_new_face_ids)

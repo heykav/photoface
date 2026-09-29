@@ -7,6 +7,11 @@ Tables:
   tags(id, name UNIQUE)
   photo_tags(photo_id, tag_id)  -- many-to-many
 
+Schema versioning: `PRAGMA user_version` holds the schema version. Migrations
+are forward-only, run in one transaction each, and an existing database is
+copied to `<name>.bak-v<old>` first. A database written by a NEWER photoface
+is refused (DatabaseVersionError) instead of being opened and corrupted.
+
 `embedding` stores a 128-float SFace embedding as raw bytes (float32).
 `pinned` marks a face whose person assignment was made or confirmed by hand -
 reclustering must never move a pinned face to a different person.
@@ -81,25 +86,72 @@ def _locked(fn):
     return wrapper
 
 
+SCHEMA_VERSION = 1
+
+
+class DatabaseVersionError(RuntimeError):
+    """The database was created by a newer version of photoface."""
+
+
+def _m1_add_phash(conn: sqlite3.Connection) -> None:
+    # v0 (unversioned) databases created before duplicate detection
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)")}
+    if "phash" not in cols:
+        conn.execute("ALTER TABLE photos ADD COLUMN phash TEXT")
+
+
+# version -> migration that upgrades (version - 1) to version
+MIGRATIONS = {1: _m1_add_phash}
+
+
 class Database:
     def __init__(self, path: Path):
         self.path = path
         self._lock = threading.RLock()
         self._tx_depth = 0
+        self._had_data = Path(path).exists() and Path(path).stat().st_size > 0
         self.conn = sqlite3.connect(str(path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
-        self.conn.executescript(SCHEMA)
-        self._migrate()
+        try:
+            if self.schema_version() <= SCHEMA_VERSION:
+                self.conn.executescript(SCHEMA)
+            self._migrate()
+        except BaseException:
+            self.conn.close()
+            raise
         self.conn.commit()
 
+    def schema_version(self) -> int:
+        return self.conn.execute("PRAGMA user_version").fetchone()[0]
+
     def _migrate(self) -> None:
-        """Lightweight forward-only migrations for columns added after a
-        database may already have been created."""
-        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(photos)")}
-        if "phash" not in cols:
-            self.conn.execute("ALTER TABLE photos ADD COLUMN phash TEXT")
+        """Bring the schema up to SCHEMA_VERSION (see module docstring)."""
+        current = self.schema_version()
+        if current > SCHEMA_VERSION:
+            raise DatabaseVersionError(
+                f"{self.path} has schema version {current}, but this photoface "
+                f"only understands up to {SCHEMA_VERSION}. Update photoface.")
+        if current == SCHEMA_VERSION:
+            return
+        if self._had_data:
+            backup = self.path.with_name(f"{self.path.name}.bak-v{current}")
+            if not backup.exists():
+                dest = sqlite3.connect(str(backup))
+                try:
+                    self.conn.backup(dest)
+                finally:
+                    dest.close()
+        for version in range(current + 1, SCHEMA_VERSION + 1):
+            self.conn.execute("BEGIN")
+            try:
+                MIGRATIONS[version](self.conn)
+                self.conn.execute(f"PRAGMA user_version = {version}")
+            except BaseException:
+                self.conn.rollback()
+                raise
+            self.conn.commit()
 
     def _commit(self) -> None:
         if self._tx_depth == 0:
@@ -181,8 +233,14 @@ class Database:
                 parent[ra] = rb
 
         hashes = [int(r["phash"], 16) for r in rows]
-        for i in range(n):
-            for j in range(i + 1, n):
+        # An all-zero dHash means "no gradients at all" (solid-colour frame):
+        # every such image would match every other, so it is never a duplicate
+        # signal on its own.
+        usable = [i for i in range(n) if hashes[i] != 0]
+        for a in range(len(usable)):
+            i = usable[a]
+            for b in range(a + 1, len(usable)):
+                j = usable[b]
                 if bin(hashes[i] ^ hashes[j]).count("1") <= max_hamming_distance:
                     union(i, j)
 
