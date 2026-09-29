@@ -13,7 +13,10 @@ reclustering must never move a pinned face to a different person.
 """
 from __future__ import annotations
 
+import functools
 import sqlite3
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -67,9 +70,22 @@ CREATE INDEX IF NOT EXISTS idx_photo_tags_tag ON photo_tags(tag_id);
 """
 
 
+def _locked(fn):
+    """Serialize a mutating method against `transaction()` blocks running on
+    another thread (the connection is shared with the analysis worker), so one
+    thread's commit can never land in the middle of another's transaction."""
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return fn(self, *args, **kwargs)
+    return wrapper
+
+
 class Database:
     def __init__(self, path: Path):
         self.path = path
+        self._lock = threading.RLock()
+        self._tx_depth = 0
         self.conn = sqlite3.connect(str(path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
@@ -85,6 +101,29 @@ class Database:
         if "phash" not in cols:
             self.conn.execute("ALTER TABLE photos ADD COLUMN phash TEXT")
 
+    def _commit(self) -> None:
+        if self._tx_depth == 0:
+            self.conn.commit()
+
+    @contextmanager
+    def transaction(self):
+        """Group several writes into one atomic unit: all are committed
+        together, or (on any exception, e.g. a crash mid-recluster) none are.
+        Nestable; only the outermost block commits."""
+        with self._lock:
+            self._tx_depth += 1
+            try:
+                yield self
+            except BaseException:
+                if self._tx_depth == 1:
+                    self.conn.rollback()
+                raise
+            else:
+                if self._tx_depth == 1:
+                    self.conn.commit()
+            finally:
+                self._tx_depth -= 1
+
     def close(self) -> None:
         self.conn.close()
 
@@ -96,6 +135,7 @@ class Database:
             "SELECT * FROM photos WHERE path = ?", (path,)
         ).fetchone()
 
+    @_locked
     def upsert_photo(self, path: str, mtime: float, size: int,
                      width: int, height: int, exif_date: Optional[str],
                      exif_lat: Optional[float], exif_lon: Optional[float],
@@ -114,7 +154,7 @@ class Database:
             (path, mtime, size, width, height, exif_date, exif_lat, exif_lon,
              phash, analyzed_at),
         )
-        self.conn.commit()
+        self._commit()
         row = self.get_photo_by_path(path)
         return row["id"]
 
@@ -151,10 +191,12 @@ class Database:
             groups.setdefault(find(i), []).append(row)
         return [g for g in groups.values() if len(g) > 1]
 
+    @_locked
     def delete_photo_faces(self, photo_id: int) -> None:
         self.conn.execute("DELETE FROM faces WHERE photo_id = ?", (photo_id,))
-        self.conn.commit()
+        self._commit()
 
+    @_locked
     def delete_photos_not_in(self, paths: Iterable[str]) -> None:
         paths = list(paths)
         existing = [r["path"] for r in self.conn.execute("SELECT path FROM photos")]
@@ -162,7 +204,7 @@ class Database:
         if gone:
             self.conn.executemany("DELETE FROM photos WHERE path = ?",
                                   [(p,) for p in gone])
-            self.conn.commit()
+            self._commit()
 
     def all_photos(self, order_by: str = "path") -> list[sqlite3.Row]:
         col = "exif_date" if order_by == "date" else "path"
@@ -173,6 +215,7 @@ class Database:
     # ------------------------------------------------------------------ #
     # Faces
     # ------------------------------------------------------------------ #
+    @_locked
     def add_face(self, photo_id: int, x: float, y: float, w: float, h: float,
                 embedding: np.ndarray, confidence: float,
                 person_id: Optional[int] = None, pinned: bool = False) -> int:
@@ -183,7 +226,7 @@ class Database:
             (photo_id, person_id, x, y, w, h,
              embedding.astype(np.float32).tobytes(), int(pinned), confidence),
         )
-        self.conn.commit()
+        self._commit()
         return cur.lastrowid
 
     def all_faces(self) -> list[sqlite3.Row]:
@@ -194,29 +237,32 @@ class Database:
             "SELECT * FROM faces WHERE photo_id = ?", (photo_id,)
         ).fetchall()
 
+    @_locked
     def set_face_person(self, face_id: int, person_id: Optional[int],
                         pinned: bool = True) -> None:
         self.conn.execute(
             "UPDATE faces SET person_id = ?, pinned = ? WHERE id = ?",
             (person_id, int(pinned), face_id),
         )
-        self.conn.commit()
+        self._commit()
 
     def unpinned_faces(self) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM faces WHERE pinned = 0").fetchall()
 
+    @_locked
     def delete_face(self, face_id: int) -> None:
         self.conn.execute("DELETE FROM faces WHERE id = ?", (face_id,))
-        self.conn.commit()
+        self._commit()
 
     # ------------------------------------------------------------------ #
     # Persons
     # ------------------------------------------------------------------ #
+    @_locked
     def create_person(self, name: str, color: str) -> int:
         cur = self.conn.execute(
             "INSERT INTO persons (name, color) VALUES (?, ?)", (name, color)
         )
-        self.conn.commit()
+        self._commit()
         return cur.lastrowid
 
     def all_persons(self) -> list[sqlite3.Row]:
@@ -226,34 +272,38 @@ class Database:
                GROUP BY p.id ORDER BY p.name"""
         ).fetchall()
 
+    @_locked
     def rename_person(self, person_id: int, name: str) -> None:
         self.conn.execute("UPDATE persons SET name = ? WHERE id = ?", (name, person_id))
-        self.conn.commit()
+        self._commit()
 
+    @_locked
     def merge_persons(self, src_id: int, dst_id: int) -> None:
         self.conn.execute(
             "UPDATE faces SET person_id = ? WHERE person_id = ?", (dst_id, src_id)
         )
         self.conn.execute("DELETE FROM persons WHERE id = ?", (src_id,))
-        self.conn.commit()
+        self._commit()
 
+    @_locked
     def delete_person(self, person_id: int) -> None:
         self.conn.execute(
             "UPDATE faces SET person_id = NULL, pinned = 0 WHERE person_id = ?",
             (person_id,),
         )
         self.conn.execute("DELETE FROM persons WHERE id = ?", (person_id,))
-        self.conn.commit()
+        self._commit()
 
     # ------------------------------------------------------------------ #
     # Tags
     # ------------------------------------------------------------------ #
+    @_locked
     def get_or_create_tag(self, name: str) -> int:
         row = self.conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()
         if row:
             return row["id"]
         cur = self.conn.execute("INSERT INTO tags (name) VALUES (?)", (name,))
-        self.conn.commit()
+        self._commit()
         return cur.lastrowid
 
     def all_tags(self) -> list[sqlite3.Row]:
@@ -263,20 +313,22 @@ class Database:
                GROUP BY t.id ORDER BY t.name"""
         ).fetchall()
 
+    @_locked
     def tag_photo(self, photo_id: int, tag_name: str) -> None:
         tag_id = self.get_or_create_tag(tag_name)
         self.conn.execute(
             "INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) VALUES (?, ?)",
             (photo_id, tag_id),
         )
-        self.conn.commit()
+        self._commit()
 
+    @_locked
     def untag_photo(self, photo_id: int, tag_id: int) -> None:
         self.conn.execute(
             "DELETE FROM photo_tags WHERE photo_id = ? AND tag_id = ?",
             (photo_id, tag_id),
         )
-        self.conn.commit()
+        self._commit()
 
     def tags_for_photo(self, photo_id: int) -> list[sqlite3.Row]:
         return self.conn.execute(
