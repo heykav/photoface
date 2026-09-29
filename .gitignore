@@ -11,3 +11,4 @@ thumbcache/
 .pytest_cache/
 build/
 dist/
+*.db.bak-*

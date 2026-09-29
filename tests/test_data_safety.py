@@ -9,41 +9,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import numpy as np
 import pytest
-from PIL import Image
 
 import analyzer as analyzer_mod
-from analyzer import Analyzer, DetectedFace
+from analyzer import Analyzer
 from database import SCHEMA_VERSION, Database, DatabaseVersionError
-from synth import DIM, unit
-
-
-class StubEngine:
-    """Deterministic 'model': the image's red channel picks the identity."""
-
-    def __init__(self):
-        rng = np.random.RandomState(0)
-        self.centroids = [unit(rng.normal(size=DIM)) for _ in range(256)]
-        self.calls = 0
-        self.fail_on_call = None
-
-    def detect_and_embed(self, image_bgr):
-        self.calls += 1
-        if self.fail_on_call == self.calls:
-            raise RuntimeError("detector blew up")
-        ident = int(image_bgr[..., 2].mean())
-        rng = np.random.RandomState(self.calls)
-        emb = unit(self.centroids[ident] + 0.3 * rng.normal(size=DIM) / np.sqrt(DIM))
-        return [DetectedFace(2.0, 2.0, 10.0, 10.0, emb.astype(np.float32), 0.99)]
-
-
-def make_photos(folder: Path, reds=(10, 10, 10, 200, 200, 90)):
-    folder.mkdir(parents=True, exist_ok=True)
-    for i, r in enumerate(reds):
-        Image.new("RGB", (32, 32), (r, 50 + i, 60)).save(folder / f"p{i}.jpg", "JPEG",
-                                                          quality=95)
-    return sorted(folder.glob("*.jpg"))
+from stubs import StubEngine, make_photos  # noqa: F401
 
 
 def snapshot(folder: Path):
@@ -89,8 +60,8 @@ class TestOriginalsNeverModified:
     def test_thumbnail_cache_never_written_beside_originals(self, tmp_path, db, monkeypatch):
         pytest.importorskip("PySide6.QtGui", exc_type=ImportError)
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-        from PySide6.QtGui import QGuiApplication
-        QGuiApplication.instance() or QGuiApplication([])
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance() or QApplication([])
         from gui import thumbnails
         cache = tmp_path / "cache"
         cache.mkdir()
