@@ -25,6 +25,7 @@ from clustering import (FaceRecord, DEFAULT_THRESHOLD, greedy_assign, recluster,
                         stabilize_assignment)
 from database import Database
 from exif_utils import extract_exif  # noqa: F401  (re-exported)
+from model_files import require_installed
 from paths import models_dir
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff", ".tif"}
@@ -65,7 +66,7 @@ def compute_phash(path: Path) -> Optional[str]:
         img = Image.open(path).convert("L").resize((9, 8), Image.LANCZOS)
     except Exception:  # noqa: BLE001
         return None
-    pixels = list(img.getdata())
+    pixels = img.tobytes()  # mode "L": one byte per pixel
     bits = 0
     for row in range(8):
         for col in range(8):
@@ -94,10 +95,7 @@ class FaceEngine:
     def __init__(self, score_threshold: float = 0.7):
         yunet = models_dir() / "face_detection_yunet_2023mar.onnx"
         sface = models_dir() / "face_recognition_sface_2021dec.onnx"
-        if not yunet.exists() or not sface.exists():
-            raise FileNotFoundError(
-                "Face models not found - run `python scripts/download_models.py` first."
-            )
+        require_installed()  # raises ModelError (a FileNotFoundError) with next steps
         self._detector = cv2.FaceDetectorYN.create(
             str(yunet), "", (0, 0), score_threshold=score_threshold
         )

@@ -2,12 +2,45 @@
 
 [![tests](https://github.com/heykav/photoface/actions/workflows/tests.yml/badge.svg)](https://github.com/heykav/photoface/actions/workflows/tests.yml)
 
-Every "photo organizer" I tried wanted my library in its cloud before it
-would tell me which faces belonged together. photoface doesn't — it's a
-desktop app (PySide6) that points at a folder on your disk, runs face
-detection and clustering entirely locally, and lets you browse and filter
-by person, tag, location, or possible duplicate. Nothing leaves the
-machine because there's no server for it to leave to.
+A local-first desktop app (PySide6) that groups the people in a folder of
+photos, without sending a single photo anywhere. Point it at a folder;
+it detects faces (OpenCV YuNet), embeds them (SFace), clusters them into
+people, and lets you browse by person, tag, place, or possible duplicate -
+correcting the grouping by hand where it gets it wrong.
+
+## What this is / is not
+
+**It is** a private, offline browser and sorter for a personal photo folder,
+with manual corrections that the automatic clustering respects ("pinned"
+faces never move).
+
+**It is not** a photo editor, a cloud service, or a face *identification*
+system: it clusters faces that look alike within your library and never
+names anyone on its own. Clustering quality depends on the SFace model and
+on photo quality - expect some mistakes (that is what the manual pinning is
+for). It does not modify, move, rename or delete your original photos.
+
+## Privacy
+
+- **All processing is local.** Detection, embedding, clustering, hashing and
+  EXIF reading run on your machine. The code contains no telemetry, upload,
+  or account logic (audited: the only network-capable code is listed below).
+- **Network use, exhaustively:** (1) `scripts/download_models.py` downloads
+  the two ONNX models from GitHub (opencv/opencv_zoo) once; (2) clicking
+  "open in OpenStreetMap" in the lightbox opens your browser at
+  openstreetmap.org with that photo's coordinates in the URL - only when you
+  click it.
+- **What is stored, and where** (nothing else is written):
+  - `photoface.db` (SQLite): photo paths, size/mtime, dimensions, capture
+    date and GPS from EXIF, a perceptual hash, face boxes, 128-number face
+    embeddings, person names/colours, tags. Next to the code when run from
+    source; `~/.photoface/` for a packaged build. Face embeddings are
+    biometric-like data: delete this file to erase them.
+  - `photoface.db.bak-v<N>`: a copy made before a schema upgrade.
+  - `thumbcache/`: downsized JPEG thumbnails of your photos.
+  - `models/`: the ONNX models (and `*.sha256` records).
+  - Qt `QSettings` (view options, last folder path).
+- Your original photos are only ever opened read-only.
 
 ## Screenshots
 
@@ -67,7 +100,8 @@ own library will show your actual photos and faces in their place.)
 - SQLite persistence; unchanged files (same mtime + size) are skipped on
   re-analysis instead of being re-detected from scratch. Schema changes
   (e.g. adding the duplicate-detection hash column) migrate forward
-  automatically for an existing database.
+  automatically for an existing database (versioned via `PRAGMA user_version`,
+  backed up first, and a database from a newer photoface is refused).
 
 ## Run from source
 
@@ -77,31 +111,57 @@ Requires Python 3.10+.
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/download_models.py   # fetches the YuNet + SFace ONNX models
+python scripts/download_models.py   # fetches + checks the YuNet and SFace ONNX models
 python main.py
 ```
 
-Type or browse to a folder in the top bar and press **Analyze**.
+Type or browse to a folder in the top bar and press **Analyze**. On Linux,
+PySide6 needs the system libraries `libegl1 libgl1 libxkbcommon0`
+(headless/CI use: `QT_QPA_PLATFORM=offscreen`).
+
+### Model integrity
+
+`download_models.py` writes each model to a temporary file, hashes it, and
+installs it atomically, so a truncated download is never mistaken for a
+model; offline, it stops with the URL and the folder to copy the file into.
+**SHA-256 values are not pinned yet** - I could not read the authoritative
+checksums (Git LFS ids in opencv/opencv_zoo) when this was written and will
+not invent them. Until they are pinned in `model_files.py`, the first
+download is trusted, its digest is printed and recorded in
+`models/<name>.sha256`, and every later start verifies against that record.
+`python scripts/download_models.py --strict` refuses unpinned models.
 
 ## Tests
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+QT_QPA_PLATFORM=offscreen pytest
 ```
 
-36 tests cover the clustering algorithm (greedy assignment, average-linkage
-re-clustering, the "never merge two different pinned identities" invariant),
-the perceptual-hash function (determinism, near-duplicate closeness,
-unrelated-image distance), and the full database layer (photos/faces/
-persons/tags CRUD, filtered queries, duplicate grouping) - no display or
-model files required, and CI (`.github/workflows/tests.yml`) runs the suite
-on Python 3.10-3.12 on every push and pull request. The GUI itself was
-verified interactively under `QT_QPA_PLATFORM=offscreen` - gallery rendering,
-sidebar person/tag lists, lightbox face overlays and geolocation, tagging,
-duplicate filtering, keyboard navigation, folder-watcher arming, and
-filter/rename/merge/recluster round-trips - rather than covered by automated
-GUI tests in this v1.
+151 tests, none needing the ONNX models or a display (a stub engine and
+synthetic embeddings stand in): clustering properties and quality on
+synthetic data (determinism, pinned faces never move, idempotence, empty and
+single-member inputs, purity/completeness), database migrations and crash
+rollback, "originals are never modified", EXIF/GPS edge cases, model-download
+integrity, duplicate detection, and headless smoke tests of the real
+`MainWindow`. CI (`.github/workflows/tests.yml`) runs them on Python
+3.10-3.12 with Qt's offscreen platform, plus a lint job.
+
+## How clustering behaves
+
+Cosine similarity of SFace embeddings; default threshold 0.363 (the OpenCV
+Zoo's published "same person" cutoff, adjustable in Settings - higher means
+fewer false merges, lower means fewer split identities). The result is
+deterministic for a given input order, pinned faces never change person,
+reclustering twice changes nothing, and existing people (including renamed
+ones) are reused rather than recreated. It runs as one database transaction.
+
+Measured on *synthetic* 128-d embeddings only (`tests/synth.py`; real SFace
+accuracy is not measured here because the models could not be downloaded in
+the development sandbox): well-separated identities are recovered exactly
+(purity 1.00, completeness 1.00); very noisy identities fragment (purity
+1.00, completeness 0.34); identities whose centroids nearly coincide
+collapse into one (purity 0.33) - no threshold fixes data that ambiguous.
 
 ## Project layout
 
@@ -110,8 +170,10 @@ GUI tests in this v1.
 | `main.py`                    | Desktop entry point (QApplication + theme)        |
 | `gui/`                       | PySide6 UI: main window, gallery, sidebar, lightbox, settings |
 | `analyzer.py`                | Folder scanning, EXIF, perceptual hashing, face detection/embedding, ties clustering to the DB |
-| `clustering.py`              | Greedy incremental assignment + average-linkage re-clustering |
-| `database.py`                | SQLite schema, migrations, and query helpers      |
+| `clustering.py`              | Greedy incremental assignment + average-linkage re-clustering + stable person mapping |
+| `database.py`                | SQLite schema, versioned migrations, transactions, query helpers |
+| `exif_utils.py`              | Defensive EXIF date / GPS parsing                 |
+| `model_files.py`             | Model locations, verified download                |
 | `paths.py`                   | Path resolution (source vs. a future frozen bundle) |
 | `scripts/download_models.py` | Downloads YuNet and SFace ONNX models from the OpenCV Zoo |
 | `tests/`                     | Pytest suite for `clustering.py`, `database.py`, and perceptual hashing |

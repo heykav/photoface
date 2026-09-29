@@ -230,15 +230,13 @@ class MainWindow(QMainWindow):
         self._watch_debounce.start()
 
     def _recluster_now(self) -> None:
-        if self._engine is None:
-            try:
-                self._engine = FaceEngine()
-            except FileNotFoundError as e:
-                QMessageBox.critical(self, "photoface", str(e))
-                return
+        # clustering works on stored embeddings; it does not need the models
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             Analyzer(self.db, self._engine, threshold=self._threshold).recluster_all()
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "photoface", f"Reclustering failed "
+                                 f"(nothing was changed):\n{e}")
         finally:
             QApplication.restoreOverrideCursor()
         self._reload_all()
