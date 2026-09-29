@@ -2,7 +2,7 @@
 """PyInstaller spec for photoface. Build with:
 
     pip install pyinstaller
-    python scripts/download_models.py
+    python scripts/download_models.py   # fails closed until hashes are pinned
     pyinstaller photoface.spec
 
 Bundles the downloaded ONNX models into the executable itself (via `datas`)
