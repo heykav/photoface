@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/hero-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/hero-light.svg">
+    <img alt="photoface banner: a row of faceless avatar tokens grouped into people, with the tagline 'Find the people in your photo library. Without uploading a single photo.' (illustration, not real people)" src="docs/img/hero-light.svg" width="100%">
+  </picture>
+</p>
+
 # photoface
 
 [![tests](https://github.com/heykav/photoface/actions/workflows/tests.yml/badge.svg)](https://github.com/heykav/photoface/actions/workflows/tests.yml)
@@ -44,18 +52,33 @@ for). It does not modify, move, rename or delete your original photos.
 
 ## Screenshots
 
-Gallery with per-person colored face boxes, tag dots, and the people/tags
-sidebar:
+**All images below are synthetic demo data.** No real person's photo is
+shown: the "photos" are procedurally drawn, faceless avatar tokens, and the
+face embeddings are synthetic (a stand-in engine replaces the YuNet/SFace
+models, which were not available where these were made). Everything else -
+scanning, EXIF/GPS parsing, greedy and average-linkage clustering, SQLite, and
+the real Qt widgets - is the app's own code. They show how the interface
+behaves, not how accurate real face recognition is. Regenerate them with
+`python scripts/make_screenshots.py` (seeded; see the script's docstring).
 
-![Gallery](screenshots/gallery.png)
+| | |
+|---|---|
+| ![People sidebar with six clustered synthetic people and the photo gallery with coloured face boxes. Synthetic demo data.](docs/img/people-overview.png) | ![Gallery filtered to one synthetic person, showing only that person's photos. Synthetic demo data.](docs/img/person-grid.png) |
+| **People and gallery.** Six synthetic identities recovered as six people, with per-person face boxes and tag dots. | **One person's photos.** Selecting a person in the sidebar filters the grid. |
+| ![Gallery filtered to possible duplicates, showing two pairs and a triple of near-identical synthetic photos. Synthetic demo data.](docs/img/duplicates.png) | ![Lightbox showing a synthetic two-person photo with named face boxes, capture date and a synthetic GPS position in the footer. Synthetic demo data.](docs/img/lightbox-exif.png) |
+| **Possible duplicates.** Re-exports of the same shot surface together (perceptual-hash groups). | **Lightbox and EXIF.** Named face boxes, capture date, and a synthetic GPS position. |
 
-Full-size lightbox view of a photo with the detected face outlined and
-named, plus capture date and GPS coordinates:
+Two earlier captures (also synthetic placeholder photos) are kept in
+[`screenshots/`](screenshots/): [gallery](screenshots/gallery.png) and
+[lightbox](screenshots/lightbox.png).
 
-![Lightbox](screenshots/lightbox.png)
+## How it works
 
-(Both captured from the app itself with synthetic placeholder photos - your
-own library will show your actual photos and faces in their place.)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/pipeline-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/img/pipeline-light.svg">
+  <img alt="Pipeline diagram: 1 scan the folder, 2 detect faces with YuNet, 3 embed with SFace, 4 greedy online clustering, 5 average-linkage recluster, 6 pinned corrections preserved, 7 stored in SQLite. Everything runs on the user's machine; the only network use is the one-time model download." src="docs/img/pipeline-light.svg" width="100%">
+</picture>
 
 ## Features
 
@@ -176,6 +199,9 @@ collapse into one (purity 0.33) - no threshold fixes data that ambiguous.
 | `model_files.py`             | Model locations, verified download                |
 | `paths.py`                   | Path resolution (source vs. a future frozen bundle) |
 | `scripts/download_models.py` | Downloads YuNet and SFace ONNX models from the OpenCV Zoo |
+| `scripts/make_screenshots.py` | Regenerates `docs/img/*.png` from a synthetic demo library (no models, no real photos) |
+| `scripts/make_docs_art.py`   | Regenerates the banner/diagram SVGs and the 1280x640 social-preview PNG in `docs/img/` |
+| `docs/img/`                  | README artwork (all synthetic; `social-preview.png` is for GitHub's repo social preview) |
 | `tests/`                     | Pytest suite for `clustering.py`, `database.py`, and perceptual hashing |
 | `.github/workflows/tests.yml`| CI: runs the test suite on Python 3.10-3.12       |
 
