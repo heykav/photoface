@@ -171,3 +171,27 @@ class TestFilteredQueryByTag:
         tag_id = db.tags_for_photo(p1)[0]["id"]
         result = db.filtered_photos(tag_ids=[tag_id])
         assert [r["id"] for r in result] == [p1]
+
+
+class TestTransactions:
+    def test_transaction_commits_together(self, db):
+        with db.transaction():
+            a = db.create_person("A", "#000000")
+            db.create_person("B", "#000000")
+        assert {p["name"] for p in db.all_persons()} == {"A", "B"} and a
+
+    def test_transaction_rolls_back_on_error(self, db):
+        db.create_person("keep", "#000000")
+        with pytest.raises(RuntimeError):
+            with db.transaction():
+                db.create_person("lost", "#000000")
+                raise RuntimeError("boom")
+        assert [p["name"] for p in db.all_persons()] == ["keep"]
+
+    def test_nested_transaction_only_outer_commits(self, db):
+        with pytest.raises(RuntimeError):
+            with db.transaction():
+                with db.transaction():
+                    db.create_person("x", "#000000")
+                raise RuntimeError("outer fails after inner finished")
+        assert db.all_persons() == []

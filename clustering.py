@@ -17,6 +17,23 @@ Two passes, mirroring the reference project's design:
 
 Embeddings are compared with cosine similarity (SFace's own recommended
 metric); `threshold` is a similarity cutoff in [-1, 1], not a distance.
+
+Thresholds (all cosine similarity):
+- `DEFAULT_THRESHOLD` = 0.363 is the cutoff the OpenCV Zoo publishes for
+  SFace ("same person" if similarity >= 0.363). Raise it for fewer false
+  merges (more, smaller clusters); lower it for fewer split identities.
+- `greedy_assign` joins a face to a person when similarity is strictly
+  greater than the threshold; `recluster` merges two clusters while their
+  *average* pairwise similarity is at least the threshold.
+
+Determinism and stability:
+- Both functions are pure and deterministic for a fixed input order (no
+  randomness anywhere; ties break toward the lowest input index).
+- `recluster` returns the same partition for any permutation of the input
+  whenever no two candidate merges tie exactly.
+- `stabilize_assignment` maps the anonymous clusters `recluster` finds back
+  onto existing person ids, so reclustering twice does not churn people
+  (and renamed people keep their names).
 """
 from __future__ import annotations
 
@@ -85,102 +102,123 @@ def greedy_assign(new_faces: List[FaceRecord], existing: List[FaceRecord],
     return assignments
 
 
-class _UnionFind:
-    def __init__(self, n: int):
-        self.parent = list(range(n))
-
-    def find(self, x: int) -> int:
-        while self.parent[x] != x:
-            self.parent[x] = self.parent[self.parent[x]]
-            x = self.parent[x]
-        return x
-
-    def union(self, a: int, b: int) -> None:
-        ra, rb = self.find(a), self.find(b)
-        if ra != rb:
-            self.parent[ra] = rb
-
-
 def recluster(faces: List[FaceRecord],
-             threshold: float = DEFAULT_THRESHOLD) -> Dict[int, int]:
+              threshold: float = DEFAULT_THRESHOLD) -> Dict[int, int]:
     """Full average-linkage re-clustering over ALL given faces (pinned and
     unpinned together, so unpinned faces can still join a pinned person's
     cluster). Returns {face_id: person_id}, where person_id is either a real,
     existing person id (a cluster anchored to a pinned face keeps that
-    person's id) or a negative placeholder id shared by every face in a
-    cluster that has no pinned anchor - the caller maps each distinct
-    negative id to one newly-created person row (mirrors the tentative-id
-    convention `greedy_assign` uses). Pinned faces always keep their existing
-    person_id; this function only decides where *unpinned* faces land, and
-    never merges two clusters that are each anchored to a different pinned
-    person."""
+    person's id) or a negative placeholder id (-(lowest input index in the
+    cluster + 1)) shared by every face in a cluster that has no pinned
+    anchor - the caller maps each distinct negative id to a person row (see
+    `stabilize_assignment`). Pinned faces always keep their existing
+    person_id, and two clusters anchored to different pinned persons are
+    never merged.
+
+    Average linkage on unit vectors needs no pairwise loops: the mean cosine
+    similarity of clusters A and B is (sum_A . sum_B) / (|A||B|), so a
+    cluster-similarity matrix is kept and updated with the Lance-Williams
+    rule when two clusters merge. Cost is O(n^2) memory and O(n^2) per merge.
+    """
     n = len(faces)
     if n == 0:
         return {}
-    if n == 1:
-        f = faces[0]
-        pid = f.person_id if f.pinned and f.person_id is not None else -1
-        return {f.face_id: pid}
 
-    emb = np.stack([f.embedding for f in faces])
+    emb = np.nan_to_num(
+        np.stack([np.asarray(f.embedding, dtype=np.float64).ravel() for f in faces]),
+        nan=0.0, posinf=0.0, neginf=0.0)
     norms = np.linalg.norm(emb, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
     unit = emb / norms
-    sim = unit @ unit.T  # cosine similarity matrix
-    dist = 1.0 - sim
-    np.fill_diagonal(dist, np.inf)
+    sim = unit @ unit.T  # average cluster-to-cluster similarity, initially pairwise
 
-    uf = _UnionFind(n)
-    # cluster -> pinned person_id it's anchored to (None if none yet)
-    anchor: Dict[int, Optional[int]] = {}
-    for i, f in enumerate(faces):
-        anchor[i] = f.person_id if f.pinned else None
-
+    has_anchor = np.array([f.pinned and f.person_id is not None for f in faces])
+    anchor_id = np.array([f.person_id if h else 0 for f, h in zip(faces, has_anchor)],
+                         dtype=np.int64)
+    size = np.ones(n)
+    active = np.ones(n, dtype=bool)
     members: Dict[int, List[int]] = {i: [i] for i in range(n)}
 
-    def cluster_of(i: int) -> int:
-        return uf.find(i)
+    def compatible(i: int) -> np.ndarray:
+        """Which clusters may merge with cluster i (not itself, still active,
+        not anchored to a different pinned person)."""
+        ok = active.copy()
+        ok[i] = False
+        if has_anchor[i]:
+            ok &= ~(has_anchor & (anchor_id != anchor_id[i]))
+        return ok
 
-    def avg_linkage(a_members: List[int], b_members: List[int]) -> float:
-        sub = dist[np.ix_(a_members, b_members)]
-        finite = sub[np.isfinite(sub)]
-        return float(finite.mean()) if finite.size else np.inf
+    work = np.full((n, n), -np.inf)
+    for i in range(n):
+        ok = compatible(i)
+        work[i, ok] = sim[i, ok]
 
-    threshold_dist = 1.0 - threshold
-    changed = True
-    while changed:
-        changed = False
-        roots = sorted(set(uf.find(i) for i in range(n)))
-        best = (None, None, np.inf)
-        for ai in range(len(roots)):
-            for bi in range(ai + 1, len(roots)):
-                ra, rb = roots[ai], roots[bi]
-                aa, ab = anchor.get(ra), anchor.get(rb)
-                if aa is not None and ab is not None and aa != ab:
-                    continue  # never merge two different pinned identities
-                d = avg_linkage(members[ra], members[rb])
-                if d < best[2]:
-                    best = (ra, rb, d)
-        ra, rb, d = best
-        if ra is not None and d <= threshold_dist:
-            uf.union(ra, rb)
-            new_root = uf.find(ra)
-            merged_members = members[ra] + members[rb]
-            aa, ab = anchor.get(ra), anchor.get(rb)
-            merged_anchor = aa if aa is not None else ab
-            for r in (ra, rb):
-                if r != new_root:
-                    del members[r]
-                    del anchor[r]
-            members[new_root] = merged_members
-            anchor[new_root] = merged_anchor
-            changed = True
+    while True:
+        flat = int(np.argmax(work))  # first maximum -> lowest (i, j): deterministic
+        i, j = divmod(flat, n)
+        best = work[i, j]
+        if not np.isfinite(best) or best < threshold - 1e-12:
+            break
+        if i > j:
+            i, j = j, i
+        # merge j into i (the lower index stays the representative)
+        total = size[i] + size[j]
+        merged = (size[i] * sim[i] + size[j] * sim[j]) / total
+        sim[i, :] = merged
+        sim[:, i] = merged
+        size[i] = total
+        members[i].extend(members.pop(j))
+        active[j] = False
+        if not has_anchor[i] and has_anchor[j]:
+            has_anchor[i], anchor_id[i] = True, anchor_id[j]
+        work[j, :] = -np.inf
+        work[:, j] = -np.inf
+        ok = compatible(i)
+        row = np.where(ok, sim[i], -np.inf)
+        work[i, :] = row
+        work[:, i] = row
 
     result: Dict[int, int] = {}
     for root, idxs in members.items():
-        pid = anchor.get(root)
-        if pid is None:
-            pid = -(root + 1)  # negative placeholder, unique per unanchored cluster
+        pid = int(anchor_id[root]) if has_anchor[root] else -(min(idxs) + 1)
         for i in idxs:
             result[faces[i].face_id] = pid
     return result
+
+
+def stabilize_assignment(faces: List[FaceRecord],
+                         assignment: Dict[int, int]) -> Dict[int, int]:
+    """Rewrite the negative placeholder ids in a `recluster` result to
+    existing person ids where the cluster overlaps a person the faces were
+    previously assigned to, so reclustering does not create new people for
+    groups that already had one (and renamed people keep their names).
+
+    Each previous person id is claimed by at most one cluster, and never by a
+    cluster if the id is already used by a pinned-anchored cluster. Claims are
+    resolved greedily by overlap size (ties: lowest person id, then lowest
+    face id in the cluster), so the outcome is deterministic. Clusters that
+    claim nothing keep their negative placeholder (caller creates a person).
+    Applying this to its own output is a fixed point.
+    """
+    prev = {f.face_id: f.person_id for f in faces}
+    taken = {pid for pid in assignment.values() if pid >= 0}
+    overlap: Dict[tuple, int] = {}
+    cluster_min_face: Dict[int, int] = {}
+    for fid, cid in assignment.items():
+        if cid >= 0:
+            continue
+        cluster_min_face[cid] = min(fid, cluster_min_face.get(cid, fid))
+        p = prev.get(fid)
+        if p is not None and p not in taken:
+            overlap[(cid, p)] = overlap.get((cid, p), 0) + 1
+    ranked = sorted(overlap.items(),
+                    key=lambda kv: (-kv[1], kv[0][1], cluster_min_face[kv[0][0]]))
+    mapping: Dict[int, int] = {}
+    used: set = set()
+    for (cid, p), _count in ranked:
+        if cid in mapping or p in used:
+            continue
+        mapping[cid] = p
+        used.add(p)
+    return {fid: mapping.get(cid, cid) if cid < 0 else cid
+            for fid, cid in assignment.items()}

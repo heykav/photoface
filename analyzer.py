@@ -11,6 +11,7 @@ feature vector via `alignCrop` + `feature` on the full-resolution image.
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +21,8 @@ import cv2
 import numpy as np
 from PIL import Image, ExifTags
 
-from clustering import FaceRecord, DEFAULT_THRESHOLD, greedy_assign, recluster
+from clustering import (FaceRecord, DEFAULT_THRESHOLD, greedy_assign, recluster,
+                        stabilize_assignment)
 from database import Database
 from paths import models_dir
 
@@ -29,6 +31,8 @@ _DETECT_MAX_DIM = 1600
 
 # a fixed, readable palette; persons cycle through it and keep whichever
 # color they're assigned for as long as they exist
+_AUTO_NAME = re.compile(r"^Persona \d+$")
+
 PERSON_COLORS = [
     "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4",
     "#46f0f0", "#f032e6", "#bcf60c", "#fabebe", "#008080", "#e6beff",
@@ -165,8 +169,16 @@ class Analyzer:
     def __init__(self, db: Database, engine: Optional[FaceEngine] = None,
                 threshold: float = DEFAULT_THRESHOLD):
         self.db = db
-        self.engine = engine or FaceEngine()
+        self._engine = engine
         self.threshold = threshold
+
+    @property
+    def engine(self) -> FaceEngine:
+        """Created on first use so clustering-only work (recluster_all) does
+        not need the ONNX models."""
+        if self._engine is None:
+            self._engine = FaceEngine()
+        return self._engine
 
     def _next_color(self) -> str:
         used = {p["color"] for p in self.db.all_persons()}
@@ -238,10 +250,15 @@ class Analyzer:
         all_faces = [self._row_to_record(r) for r in self.db.all_faces()]
         by_id = {f.face_id: f for f in all_faces}
         new_faces = [by_id[i] for i in new_face_ids if i in by_id]
-        existing = [f for f in all_faces if f.face_id not in set(new_face_ids)]
+        new_set = set(new_face_ids)
+        existing = [f for f in all_faces if f.face_id not in new_set]
 
         assignments = greedy_assign(new_faces, existing, self.threshold)
         tentative_to_person: dict[int, int] = {}
+        with self.db.transaction():
+            self._apply_greedy(assignments, tentative_to_person)
+
+    def _apply_greedy(self, assignments, tentative_to_person) -> None:
         for face_id, pid in assignments.items():
             if pid == -1 or pid <= -1000000:
                 if pid not in tentative_to_person:
@@ -254,28 +271,37 @@ class Analyzer:
 
     def recluster_all(self) -> None:
         """Full re-clustering pass over every face - call after a batch of
-        analysis, or on demand from a 'Recluster' menu action."""
-        records = [self._row_to_record(r) for r in self.db.all_faces()]
-        if not records:
-            return
-        by_id = {r.face_id: r for r in records}
-        assignment = recluster(records, self.threshold)
+        analysis, or on demand from a 'Recluster now' menu action.
 
-        # Every face sharing the same negative placeholder id is one
-        # unanchored cluster - map each such id to one new person row.
-        placeholder_to_person: dict[int, int] = {}
-        for face_id, pid in assignment.items():
-            if pid < 0:
-                if pid not in placeholder_to_person:
-                    name = f"Persona {len(self.db.all_persons()) + 1}"
-                    placeholder_to_person[pid] = self.db.create_person(
-                        name, self._next_color()
-                    )
-                real_pid = placeholder_to_person[pid]
-            else:
-                real_pid = pid
+        Runs as ONE database transaction: a crash or error part-way leaves
+        the previous assignment untouched. Unpinned faces keep their existing
+        person when their cluster overlaps one (so a renamed person stays
+        renamed and running this twice changes nothing); auto-named people
+        left with no faces are removed."""
+        with self.db.transaction():
+            records = [self._row_to_record(r) for r in self.db.all_faces()]
+            if not records:
+                return
+            by_id = {r.face_id: r for r in records}
+            assignment = stabilize_assignment(records, recluster(records, self.threshold))
 
-            row = by_id.get(face_id)
-            if row is not None and row.pinned:
-                continue  # never move a pinned face
-            self.db.set_face_person(face_id, real_pid, pinned=False)
+            # Every face sharing the same negative placeholder id is one
+            # unanchored cluster - map each such id to one new person row.
+            placeholder_to_person: dict[int, int] = {}
+            for face_id in sorted(assignment):
+                pid = assignment[face_id]
+                if pid < 0:
+                    if pid not in placeholder_to_person:
+                        name = f"Persona {len(self.db.all_persons()) + 1}"
+                        placeholder_to_person[pid] = self.db.create_person(
+                            name, self._next_color()
+                        )
+                    pid = placeholder_to_person[pid]
+                rec = by_id[face_id]
+                if rec.pinned or rec.person_id == pid:
+                    continue  # never move a pinned face; skip no-op writes
+                self.db.set_face_person(face_id, pid, pinned=False)
+
+            for p in self.db.all_persons():
+                if p["face_count"] == 0 and _AUTO_NAME.match(p["name"]):
+                    self.db.delete_person(p["id"])
