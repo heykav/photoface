@@ -45,6 +45,18 @@ import numpy as np
 DEFAULT_THRESHOLD = 0.363  # OpenCV Zoo's published SFace cosine-similarity cutoff
 
 
+def _unit_rows(vectors: List[np.ndarray]) -> np.ndarray:
+    """Stack embeddings as float64 rows scaled to unit length. NaN/inf
+    components become 0 and an all-zero row stays all-zero (similarity 0 to
+    everything), so a corrupt embedding can never poison a comparison."""
+    emb = np.nan_to_num(
+        np.stack([np.asarray(v, dtype=np.float64).ravel() for v in vectors]),
+        nan=0.0, posinf=0.0, neginf=0.0)
+    norms = np.linalg.norm(emb, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return emb / norms
+
+
 def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     na, nb = np.linalg.norm(a), np.linalg.norm(b)
     if na == 0 or nb == 0:
@@ -64,41 +76,49 @@ def greedy_assign(new_faces: List[FaceRecord], existing: List[FaceRecord],
                   threshold: float = DEFAULT_THRESHOLD) -> Dict[int, int]:
     """Assign each face in `new_faces` (person_id currently None) to the
     closest person found in `existing` (already-assigned faces), by cosine
-    similarity of the person's mean embedding, or leave it as -1 (caller
-    creates a new person) if nothing is close enough. Returns
-    {face_id: person_id_or_-1}. Does not mutate its inputs."""
-    means: Dict[int, np.ndarray] = {}
+    similarity to the mean of the person's *unit-length* embeddings, or give
+    it a tentative id <= -1000000 (caller creates a new person) if no person
+    is strictly more similar than `threshold`. Faces in one batch are
+    processed in input order and each assigned face updates its person's
+    mean, so the result depends on that order (`recluster` does not).
+    Returns {face_id: person_id_or_tentative_id}. Does not mutate its inputs.
+
+    Embeddings are normalized first (and NaN/inf zeroed, as in `recluster`),
+    so the outcome does not depend on the arbitrary scale of each raw
+    embedding and one corrupt face cannot make its person unmatchable.
+    """
+    if not new_faces:
+        return {}
+    sums: Dict[int, np.ndarray] = {}
     counts: Dict[int, int] = {}
-    for f in existing:
-        if f.person_id is None:
-            continue
-        means[f.person_id] = means.get(f.person_id, np.zeros_like(f.embedding)) + f.embedding
-        counts[f.person_id] = counts.get(f.person_id, 0) + 1
-    for pid in means:
-        means[pid] = means[pid] / counts[pid]
+    known = [f for f in existing if f.person_id is not None]
+    if known:
+        for f, u in zip(known, _unit_rows([f.embedding for f in known])):
+            sums[f.person_id] = sums.get(f.person_id, 0.0) + u
+            counts[f.person_id] = counts.get(f.person_id, 0) + 1
 
     assignments: Dict[int, int] = {}
-    for face in new_faces:
+    new_unit = _unit_rows([f.embedding for f in new_faces])
+    next_tentative = -1000000
+    for face, u in zip(new_faces, new_unit):
         best_pid, best_sim = -1, threshold
-        for pid, mean in means.items():
-            sim = _cosine_sim(face.embedding, mean)
+        for pid, total in sums.items():  # insertion order: ties -> first seen
+            sim = _cosine_sim(u, total / counts[pid])
             if sim > best_sim:
                 best_pid, best_sim = pid, sim
+        if best_pid == -1:
+            # tentative new person within this batch, so later faces in the
+            # batch can still cluster with it; caller maps these to real
+            # person rows after the pass completes.
+            best_pid = next_tentative
+            next_tentative -= 1
+            sums[best_pid] = np.zeros_like(u)
+            counts[best_pid] = 0
+        # fold this face into the running mean so later faces in the same
+        # batch can also match against it
+        sums[best_pid] = sums[best_pid] + u
+        counts[best_pid] += 1
         assignments[face.face_id] = best_pid
-        if best_pid != -1:
-            # fold this face into the running mean so later faces in the
-            # same batch can also match against it
-            n = counts.get(best_pid, 0)
-            means[best_pid] = (means[best_pid] * n + face.embedding) / (n + 1)
-            counts[best_pid] = n + 1
-        else:
-            # tentative new person within this batch, keyed by negative id
-            # so later faces in the batch can still cluster with it; caller
-            # maps these to real person rows after the pass completes.
-            tentative_id = -(len(means) + 1000000)
-            means[tentative_id] = face.embedding
-            counts[tentative_id] = 1
-            assignments[face.face_id] = tentative_id
     return assignments
 
 
@@ -115,22 +135,32 @@ def recluster(faces: List[FaceRecord],
     person_id, and two clusters anchored to different pinned persons are
     never merged.
 
-    Average linkage on unit vectors needs no pairwise loops: the mean cosine
-    similarity of clusters A and B is (sum_A . sum_B) / (|A||B|), so a
-    cluster-similarity matrix is kept and updated with the Lance-Williams
-    rule when two clusters merge. Cost is O(n^2) memory and O(n^2) per merge.
+    Algorithm: repeatedly merge the most similar pair of compatible clusters
+    while its average pairwise cosine similarity is >= `threshold`. Ties
+    break toward the lowest (row, column) cluster index. Average linkage on
+    unit vectors needs no pairwise loops: one n x n cluster-similarity matrix
+    is kept and updated with the Lance-Williams rule
+    sim(i+j, k) = (|i| sim(i, k) + |j| sim(j, k)) / (|i| + |j|).
+    Each row caches its best compatible partner, so a merge only rescans the
+    rows whose cached partner was one of the two merged clusters, instead of
+    the whole matrix.
+
+    Cost: 8 n^2 bytes (one float64 matrix; about 0.8 GB at n = 10,000 faces)
+    and O(n^2) time for typical inputs (O(n^3) worst case).
     """
     n = len(faces)
     if n == 0:
         return {}
 
-    emb = np.nan_to_num(
-        np.stack([np.asarray(f.embedding, dtype=np.float64).ravel() for f in faces]),
-        nan=0.0, posinf=0.0, neginf=0.0)
-    norms = np.linalg.norm(emb, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    unit = emb / norms
+    unit = _unit_rows([f.embedding for f in faces])
     sim = unit @ unit.T  # average cluster-to-cluster similarity, initially pairwise
+    del unit
+    # make it exactly symmetric (BLAS need not be), in row blocks so no second
+    # n x n temporary is allocated
+    block = 256
+    for r0 in range(block, n, block):
+        r1 = min(n, r0 + block)
+        sim[r0:r1, :r0] = sim[:r0, r0:r1].T
 
     has_anchor = np.array([f.pinned and f.person_id is not None for f in faces])
     anchor_id = np.array([f.person_id if h else 0 for f, h in zip(faces, has_anchor)],
@@ -138,28 +168,46 @@ def recluster(faces: List[FaceRecord],
     size = np.ones(n)
     active = np.ones(n, dtype=bool)
     members: Dict[int, List[int]] = {i: [i] for i in range(n)}
+    best_val = np.full(n, -np.inf)
+    best_arg = np.zeros(n, dtype=np.int64)
 
-    def compatible(i: int) -> np.ndarray:
+    def compatible_with(i: int) -> np.ndarray:
         """Which clusters may merge with cluster i (not itself, still active,
-        not anchored to a different pinned person)."""
+        not anchored to a different pinned person). Symmetric in i and k."""
         ok = active.copy()
         ok[i] = False
         if has_anchor[i]:
             ok &= ~(has_anchor & (anchor_id != anchor_id[i]))
         return ok
 
-    work = np.full((n, n), -np.inf)
-    for i in range(n):
-        ok = compatible(i)
-        work[i, ok] = sim[i, ok]
+    def rescan(rows: np.ndarray) -> None:
+        """Recompute the cached best partner (first maximum) of each row."""
+        for c0 in range(0, len(rows), block):
+            r = rows[c0:c0 + block]
+            ok = np.broadcast_to(active, (len(r), n)).copy()
+            ok[np.arange(len(r)), r] = False
+            anchored = has_anchor[r]
+            if anchored.any():
+                clash = (has_anchor[None, :]
+                         & (anchor_id[None, :] != anchor_id[r][:, None])
+                         & anchored[:, None])
+                ok &= ~clash
+            vals = np.where(ok, sim[r], -np.inf)
+            arg = np.argmax(vals, axis=1)
+            best_arg[r] = arg
+            best_val[r] = vals[np.arange(len(r)), arg]
+
+    rescan(np.arange(n))
 
     while True:
-        flat = int(np.argmax(work))  # first maximum -> lowest (i, j): deterministic
-        i, j = divmod(flat, n)
-        best = work[i, j]
+        # lowest row holding the global maximum, then its lowest column: the
+        # same pair a row-major argmax over the full masked matrix would pick
+        i = int(np.argmax(best_val))
+        best = best_val[i]
         if not np.isfinite(best) or best < threshold - 1e-12:
             break
-        if i > j:
+        j = int(best_arg[i])
+        if i > j:  # cannot happen for a symmetric matrix; kept as a guard
             i, j = j, i
         # merge j into i (the lower index stays the representative)
         total = size[i] + size[j]
@@ -169,14 +217,19 @@ def recluster(faces: List[FaceRecord],
         size[i] = total
         members[i].extend(members.pop(j))
         active[j] = False
+        best_val[j] = -np.inf
         if not has_anchor[i] and has_anchor[j]:
             has_anchor[i], anchor_id[i] = True, anchor_id[j]
-        work[j, :] = -np.inf
-        work[:, j] = -np.inf
-        ok = compatible(i)
-        row = np.where(ok, sim[i], -np.inf)
-        work[i, :] = row
-        work[:, i] = row
+
+        # column i changed for every row; column j is gone
+        col = np.where(compatible_with(i), merged, -np.inf)
+        stale = active & ((best_arg == i) | (best_arg == j))
+        stale[i] = True
+        better = active & ~stale & ((col > best_val)
+                                    | ((col == best_val) & (i < best_arg)))
+        best_val[better] = col[better]
+        best_arg[better] = i
+        rescan(np.flatnonzero(stale))
 
     result: Dict[int, int] = {}
     for root, idxs in members.items():
