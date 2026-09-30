@@ -124,7 +124,7 @@ STAGES = [
     ("3", "Embed", "SFace",
      ["cv2.FaceRecognizerSF", "Align + crop each face", "One 128-d vector per face"]),
     ("4", "Greedy online|clustering", "clustering.py",
-     ["Cosine sim. to each person's", "running mean: join if > 0.363", "else start a new person"]),
+     ["Cosine sim. to each person's", "mean (unit vectors): join", "if > 0.363, else new person"]),
     ("5", "Average-linkage|recluster", "clustering.py",
      ["Re-cluster every face together", "Merge while avg. sim. >= t", "One transaction, ids stay stable"]),
     ("6", "Pinned corrections|preserved", "clustering.py",

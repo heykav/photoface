@@ -15,7 +15,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import BinaryIO, Callable, List, Optional, Union
 
 import cv2
 import numpy as np
@@ -56,7 +56,7 @@ def iter_image_files(root: Path):
                 yield Path(dirpath) / name
 
 
-def compute_phash(path: Path) -> Optional[str]:
+def compute_phash(path: Union[Path, str, BinaryIO]) -> Optional[str]:
     """Difference hash (dHash) of the photo as displayed (EXIF orientation
     applied): resize to 9x8 grayscale, compare each pixel to its right
     neighbor -> 64 bits -> 16 hex chars. Near-duplicates (resized, JPEG
