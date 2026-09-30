@@ -23,7 +23,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Iterator, Optional
 
 import numpy as np
 
@@ -169,7 +169,7 @@ class Database:
             self.conn.commit()
 
     @contextmanager
-    def transaction(self):
+    def transaction(self) -> Iterator["Database"]:
         """Group several writes into one atomic unit: all are committed
         together, or (on any exception, e.g. a crash mid-recluster) none are.
         Nestable; only the outermost block commits."""

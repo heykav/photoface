@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Callable, List, Optional, Union
+from typing import BinaryIO, Callable, Dict, Iterator, List, Optional, Union
 
 import cv2
 import numpy as np
@@ -46,7 +47,7 @@ def _raise(err: OSError) -> None:
     raise err
 
 
-def iter_image_files(root: Path):
+def iter_image_files(root: Path) -> Iterator[Path]:
     """Yield every image under `root`. Unreadable directories raise instead
     of being skipped: a silently-skipped folder (e.g. an unmounted drive)
     would otherwise look like 'those photos were deleted'."""
@@ -266,7 +267,7 @@ class Analyzer:
         if touched_new_face_ids:
             self._greedy_pass(touched_new_face_ids)
 
-    def _row_to_record(self, row) -> FaceRecord:
+    def _row_to_record(self, row: sqlite3.Row) -> FaceRecord:
         emb = np.frombuffer(row["embedding"], dtype=np.float32)
         return FaceRecord(row["id"], emb, row["person_id"], bool(row["pinned"]))
 
@@ -282,7 +283,8 @@ class Analyzer:
         with self.db.transaction():
             self._apply_greedy(assignments, tentative_to_person)
 
-    def _apply_greedy(self, assignments, tentative_to_person) -> None:
+    def _apply_greedy(self, assignments: Dict[int, int],
+                      tentative_to_person: Dict[int, int]) -> None:
         for face_id, pid in assignments.items():
             if pid == -1 or pid <= -1000000:
                 if pid not in tentative_to_person:

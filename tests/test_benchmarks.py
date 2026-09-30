@@ -43,7 +43,7 @@ def _assert_close(a, b, path="result"):
             _assert_close(a[k], b[k], f"{path}.{k}")
     elif isinstance(a, list):
         assert len(a) == len(b), path
-        for i, (x, y) in enumerate(zip(a, b)):
+        for i, (x, y) in enumerate(zip(a, b, strict=True)):
             _assert_close(x, y, f"{path}[{i}]")
     elif isinstance(a, float) or isinstance(b, float):
         tol = RATE_TOL if abs(a) <= 1 and abs(b) <= 1 else 1.0

@@ -47,7 +47,7 @@ def _corner_colours(rgb: np.ndarray):
 
 
 def _close(a, b, tol=24):
-    return all(all(abs(x - y) <= tol for x, y in zip(p, q)) for p, q in zip(a, b))
+    return all(all(abs(x - y) <= tol for x, y in zip(p, q, strict=True)) for p, q in zip(a, b, strict=True))
 
 
 @pytest.mark.parametrize("orientation", range(1, 9))

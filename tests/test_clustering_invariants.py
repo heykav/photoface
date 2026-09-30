@@ -77,7 +77,7 @@ class TestProperties:
         faces, _ = blobs([12, 9, 7, 3, 1], sigma=1.0, seed=seed, centroid_sim=0.4)
         _pin(faces, random.Random(seed), 4, [5, 6])
         parts = [partition(recluster(faces, t)) for t in (-0.2, 0.1, 0.363, 0.5, 0.8)]
-        for coarse, fine in zip(parts, parts[1:]):
+        for coarse, fine in zip(parts, parts[1:], strict=False):
             assert _refines(fine, coarse)
 
     @pytest.mark.parametrize("seed", range(6))
@@ -150,7 +150,7 @@ class TestGreedy:
         before = [f.embedding.copy() for f in faces]
         out = greedy_assign(faces[3:], existing)
         assert set(out) == {f.face_id for f in faces[3:]}
-        assert all(np.array_equal(b, f.embedding) for b, f in zip(before, faces))
+        assert all(np.array_equal(b, f.embedding) for b, f in zip(before, faces, strict=True))
         assert all(f.person_id is None for f in faces[3:])
 
     def test_tentative_ids_are_distinct_and_below_the_sentinel(self):

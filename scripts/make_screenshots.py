@@ -186,7 +186,7 @@ def build_library(folder: Path, engine: DemoEngine):
             _gps_ifd(exif, *geotag[n])
         path = folder / f"IMG_{n:04d}.jpg"
         img.save(path, "JPEG", quality=92, exif=exif.tobytes())
-        engine.register(path, [(p[0], b) for p, b in zip(people, boxes)])
+        engine.register(path, [(p[0], b) for p, b in zip(people, boxes, strict=True)])
         tags = []
         if n in geotag:
             tags.append("trip")
@@ -198,7 +198,7 @@ def build_library(folder: Path, engine: DemoEngine):
                 dup = ImageEnhance.Brightness(img).enhance(br)
                 dpath = folder / f"IMG_{n:04d}{suffix}.jpg"
                 dup.save(dpath, "JPEG", quality=q, exif=exif.tobytes())
-                engine.register(dpath, [(p[0], b) for p, b in zip(people, boxes)])
+                engine.register(dpath, [(p[0], b) for p, b in zip(people, boxes, strict=True)])
                 meta[dpath.name] = {"tags": tags, "idents": idents}
     for p in folder.glob("*.jpg"):   # fixed mtimes: stable thumbnail-cache keys
         os.utime(p, (1_750_000_000, 1_750_000_000))
@@ -245,7 +245,7 @@ def main() -> int:
     for photo in db.all_photos():
         idents = meta[Path(photo["path"]).name]["idents"]
         faces = sorted(db.faces_for_photo(photo["id"]), key=lambda f: f["x"])
-        for f, ident in zip(faces, idents):
+        for f, ident in zip(faces, idents, strict=True):
             by_person.setdefault(f["person_id"], set()).add(ident)
     assert len(by_person) == len(IDENTITIES) and all(len(v) == 1 for v in by_person.values()), \
         f"synthetic clusters not recovered: {by_person}"

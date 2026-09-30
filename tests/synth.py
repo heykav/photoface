@@ -34,7 +34,7 @@ def blobs(sizes: Sequence[int], sigma: float, seed: int = 0,
         cents.append(c)
     faces, truth = [], {}
     fid = 1
-    for label, (c, n) in enumerate(zip(cents, sizes)):
+    for label, (c, n) in enumerate(zip(cents, sizes, strict=True)):
         for _ in range(n):
             e = unit(c + sigma * rng.normal(size=DIM) / np.sqrt(DIM))
             faces.append(FaceRecord(fid, e.astype(np.float32)))

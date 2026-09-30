@@ -93,14 +93,14 @@ def greedy_assign(new_faces: List[FaceRecord], existing: List[FaceRecord],
     counts: Dict[int, int] = {}
     known = [f for f in existing if f.person_id is not None]
     if known:
-        for f, u in zip(known, _unit_rows([f.embedding for f in known])):
+        for f, u in zip(known, _unit_rows([f.embedding for f in known]), strict=True):
             sums[f.person_id] = sums.get(f.person_id, 0.0) + u
             counts[f.person_id] = counts.get(f.person_id, 0) + 1
 
     assignments: Dict[int, int] = {}
     new_unit = _unit_rows([f.embedding for f in new_faces])
     next_tentative = -1000000
-    for face, u in zip(new_faces, new_unit):
+    for face, u in zip(new_faces, new_unit, strict=True):
         best_pid, best_sim = -1, threshold
         for pid, total in sums.items():  # insertion order: ties -> first seen
             sim = _cosine_sim(u, total / counts[pid])
@@ -163,7 +163,7 @@ def recluster(faces: List[FaceRecord],
         sim[r0:r1, :r0] = sim[:r0, r0:r1].T
 
     has_anchor = np.array([f.pinned and f.person_id is not None for f in faces])
-    anchor_id = np.array([f.person_id if h else 0 for f, h in zip(faces, has_anchor)],
+    anchor_id = np.array([f.person_id if h else 0 for f, h in zip(faces, has_anchor, strict=True)],
                          dtype=np.int64)
     size = np.ones(n)
     active = np.ones(n, dtype=bool)

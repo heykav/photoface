@@ -31,7 +31,7 @@ def reference_recluster(faces: List[FaceRecord],
     sim = unit @ unit.T  # average cluster-to-cluster similarity, initially pairwise
 
     has_anchor = np.array([f.pinned and f.person_id is not None for f in faces])
-    anchor_id = np.array([f.person_id if h else 0 for f, h in zip(faces, has_anchor)],
+    anchor_id = np.array([f.person_id if h else 0 for f, h in zip(faces, has_anchor)],  # noqa: B905 (verbatim copy)
                          dtype=np.int64)
     size = np.ones(n)
     active = np.ones(n, dtype=bool)
