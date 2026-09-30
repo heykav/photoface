@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import BinaryIO, Callable, Dict, Iterator, List, Optional, Union
 
 import cv2
 import numpy as np
@@ -24,7 +25,7 @@ from PIL import Image
 from clustering import (FaceRecord, DEFAULT_THRESHOLD, greedy_assign, recluster,
                         stabilize_assignment)
 from database import Database
-from exif_utils import extract_exif  # noqa: F401  (re-exported)
+from exif_utils import extract_exif, upright  # noqa: F401  (extract_exif re-exported)
 from model_files import require_installed
 from paths import models_dir
 
@@ -46,7 +47,7 @@ def _raise(err: OSError) -> None:
     raise err
 
 
-def iter_image_files(root: Path):
+def iter_image_files(root: Path) -> Iterator[Path]:
     """Yield every image under `root`. Unreadable directories raise instead
     of being skipped: a silently-skipped folder (e.g. an unmounted drive)
     would otherwise look like 'those photos were deleted'."""
@@ -56,14 +57,17 @@ def iter_image_files(root: Path):
                 yield Path(dirpath) / name
 
 
-def compute_phash(path: Path) -> Optional[str]:
-    """Difference hash (dHash): resize to 9x8 grayscale, compare each pixel to
-    its right neighbor -> 64 bits -> 16 hex chars. Near-duplicate photos
-    (recompressed, lightly cropped/resized, minor edits) land a small Hamming
-    distance apart; unrelated photos land far apart. Cheap enough to compute
-    for every photo during analysis."""
+def compute_phash(path: Union[Path, str, BinaryIO]) -> Optional[str]:
+    """Difference hash (dHash) of the photo as displayed (EXIF orientation
+    applied): resize to 9x8 grayscale, compare each pixel to its right
+    neighbor -> 64 bits -> 16 hex chars. Near-duplicates (resized, JPEG
+    recompressed, slightly cropped or darkened) usually land a few bits
+    apart and unrelated photos about 32 apart; see tests/dupbench.py and
+    the README for measured rates on synthetic images. A mirrored copy is
+    NOT a near-duplicate under this hash. Returns None if unreadable."""
     try:
-        img = Image.open(path).convert("L").resize((9, 8), Image.LANCZOS)
+        with Image.open(path) as raw:
+            img = upright(raw).convert("L").resize((9, 8), Image.LANCZOS)
     except Exception:  # noqa: BLE001
         return None
     pixels = img.tobytes()  # mode "L": one byte per pixel
@@ -216,7 +220,13 @@ class Analyzer:
             existing = self.db.get_photo_by_path(str(path))
             if existing is not None and existing["mtime"] == st.st_mtime and \
                existing["size"] == st.st_size and existing["analyzed_at"] is not None:
-                continue  # unchanged - skip re-analysis
+                # unchanged - skip re-analysis, but fill in a hash that a
+                # schema migration dropped (or an older version never made)
+                if existing["phash"] is None:
+                    phash = compute_phash(path)
+                    if phash is not None:
+                        self.db.set_photo_phash(existing["id"], phash)
+                continue
 
             image = cv2.imread(str(path))
             if image is None:
@@ -257,7 +267,7 @@ class Analyzer:
         if touched_new_face_ids:
             self._greedy_pass(touched_new_face_ids)
 
-    def _row_to_record(self, row) -> FaceRecord:
+    def _row_to_record(self, row: sqlite3.Row) -> FaceRecord:
         emb = np.frombuffer(row["embedding"], dtype=np.float32)
         return FaceRecord(row["id"], emb, row["person_id"], bool(row["pinned"]))
 
@@ -273,7 +283,8 @@ class Analyzer:
         with self.db.transaction():
             self._apply_greedy(assignments, tentative_to_person)
 
-    def _apply_greedy(self, assignments, tentative_to_person) -> None:
+    def _apply_greedy(self, assignments: Dict[int, int],
+                      tentative_to_person: Dict[int, int]) -> None:
         for face_id, pid in assignments.items():
             if pid == -1 or pid <= -1000000:
                 if pid not in tentative_to_person:

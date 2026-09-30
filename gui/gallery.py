@@ -136,7 +136,7 @@ class Gallery(QScrollArea):
 
     def _relayout(self) -> None:
         cols = self._columns()
-        for i, card in enumerate(self._cards):
+        for card in self._cards:
             self._grid.removeWidget(card)
         for i, card in enumerate(self._cards):
             row, col = divmod(i, cols)
