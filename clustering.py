@@ -3,12 +3,14 @@
 Two passes, mirroring the reference project's design:
 
 - `greedy_assign`: a fast incremental pass usable while analysis is still
-  running - each new face is compared to the running mean embedding of every
-  known person and joined to the closest one above `threshold`, else it
-  starts a new person.
+  running - each new face is compared to the running mean of every known
+  person's unit-length embeddings and joined to the closest one above
+  `threshold`, else it starts a new person. Depends on arrival order.
 - `recluster`: a full average-linkage agglomerative re-clustering of every
-  *unpinned* face once a batch of analysis is done, for a cleaner final
-  grouping than the greedy pass alone produces. Faces the user has pinned
+  face once a batch of analysis is done, giving an order-independent final
+  grouping (on the synthetic benchmark it is at least as pure as the greedy
+  pass, but fragments very noisy identities far more - see the README's
+  "Measured on synthetic data"). Only unpinned faces can move. Faces the user has pinned
   (hand-assigned, or confirmed by a manual edit) are treated as fixed anchors
   for their person and are never moved or reassigned by this function -
   clusters anchored to two different pinned persons are never merged
