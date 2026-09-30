@@ -8,11 +8,12 @@ Two passes, mirroring the reference project's design:
   `threshold`, else it starts a new person. Depends on arrival order.
 - `recluster`: a full average-linkage agglomerative re-clustering of every
   face once a batch of analysis is done, giving an order-independent final
-  grouping (on the synthetic benchmark it is at least as pure as the greedy
-  pass, but fragments very noisy identities far more - see the README's
-  "Measured on synthetic data"). Only unpinned faces can move. Faces the user has pinned
-  (hand-assigned, or confirmed by a manual edit) are treated as fixed anchors
-  for their person and are never moved or reassigned by this function -
+  grouping. On the synthetic benchmark it is usually at least as pure as
+  the greedy pass but fragments very noisy identities far more (see the
+  README, "Measured on synthetic data"). Only unpinned faces can move: faces
+  the user has pinned (hand-assigned, or confirmed by a manual edit) are
+  fixed anchors for their person and are never moved or reassigned by this
+  function -
   clusters anchored to two different pinned persons are never merged
   together, and a cluster not touching any pinned anchor becomes a new
   person.
