@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   build:
     strategy:
@@ -19,10 +22,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pyinstaller
+      # Fails closed until the model SHA-256s are pinned in model_files.py:
+      # a release must never bundle unverified weights, so no TOFU here.
       - run: python scripts/download_models.py
       - run: pyinstaller photoface.spec --noconfirm
 
@@ -46,6 +53,8 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # create the draft release
     steps:
       - uses: actions/download-artifact@v4
         with:

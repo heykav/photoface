@@ -37,7 +37,13 @@ for). It does not modify, move, rename or delete your original photos.
   the two ONNX models from GitHub (opencv/opencv_zoo) once; (2) clicking
   "open in OpenStreetMap" in the lightbox opens your browser at
   openstreetmap.org with that photo's coordinates in the URL - only when you
-  click it.
+  click it. The app never calls the download code itself.
+- **What leaves the machine:** no photo, thumbnail, face crop, embedding,
+  file name or path is ever sent anywhere. The model download is a plain
+  HTTPS GET to GitHub that carries nothing about your photos (GitHub sees
+  your IP address and a Python user agent). The only photo-derived data
+  that can leave is one photo's GPS latitude/longitude, in the
+  OpenStreetMap URL, when you click that button.
 - **What is stored, and where** (nothing else is written):
   - `photoface.db` (SQLite): photo paths, size/mtime, dimensions, capture
     date and GPS from EXIF, a perceptual hash, face boxes, 128-number face
@@ -134,7 +140,7 @@ Requires Python 3.10+.
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/download_models.py   # fetches + checks the YuNet and SFace ONNX models
+python scripts/download_models.py   # fetches + checks the models; see "Model integrity"
 python main.py
 ```
 
@@ -144,15 +150,37 @@ PySide6 needs the system libraries `libegl1 libgl1 libxkbcommon0`
 
 ### Model integrity
 
-`download_models.py` writes each model to a temporary file, hashes it, and
-installs it atomically, so a truncated download is never mistaken for a
-model; offline, it stops with the URL and the folder to copy the file into.
-**SHA-256 values are not pinned yet** - I could not read the authoritative
-checksums (Git LFS ids in opencv/opencv_zoo) when this was written and will
-not invent them. Until they are pinned in `model_files.py`, the first
-download is trusted, its digest is printed and recorded in
-`models/<name>.sha256`, and every later start verifies against that record.
-`python scripts/download_models.py --strict` refuses unpinned models.
+`download_models.py` writes each model to a temporary `*.part` file, checks
+its SHA-256 (and size, when pinned), and only then renames it into place.
+On any failure - offline, HTTP error, empty file, size or hash mismatch -
+the temporary file is deleted and nothing is installed; an existing model
+that fails its check is removed before re-downloading. The app re-checks
+the models each time it loads them and refuses to use them if a check
+fails.
+
+The policy is **fail closed**: a model is only accepted when its expected
+SHA-256 is known, either pinned in `model_files.MODELS` or recorded earlier
+by an explicit trust-on-first-use step.
+
+**SHA-256 values are not pinned yet.** The authoritative checksums are the
+Git LFS object ids in opencv/opencv_zoo, which could not be read when this
+was written, and they will not be invented. Until they are pinned, a plain
+`python scripts/download_models.py` refuses to install the models. To
+accept them anyway:
+
+```bash
+python scripts/download_models.py --trust-on-first-use
+# or: PHOTOFACE_TRUST_ON_FIRST_USE=1 python scripts/download_models.py
+```
+
+This downloads the models (or hashes files you copied into `models/` by
+hand), prints each SHA-256 and size, and records the hash in
+`models/<name>.sha256`; every later run verifies against that record.
+Compare the printed hashes with the LFS pointers of the two files in
+https://github.com/opencv/opencv_zoo and paste them into `model_files.py`
+to pin them. `--strict` refuses unpinned models even with trust-on-first-use.
+The release workflow does not use trust-on-first-use, so tagged builds fail
+until the hashes are pinned.
 
 ## Tests
 
@@ -161,7 +189,7 @@ pip install -r requirements-dev.txt
 QT_QPA_PLATFORM=offscreen pytest
 ```
 
-151 tests, none needing the ONNX models or a display (a stub engine and
+167 tests, none needing the ONNX models or a display (a stub engine and
 synthetic embeddings stand in): clustering properties and quality on
 synthetic data (determinism, pinned faces never move, idempotence, empty and
 single-member inputs, purity/completeness), database migrations and crash
@@ -202,8 +230,8 @@ collapse into one (purity 0.33) - no threshold fixes data that ambiguous.
 | `scripts/make_screenshots.py` | Regenerates `docs/img/*.png` from a synthetic demo library (no models, no real photos) |
 | `scripts/make_docs_art.py`   | Regenerates the banner/diagram SVGs and the 1280x640 social-preview PNG in `docs/img/` |
 | `docs/img/`                  | README artwork (all synthetic; `social-preview.png` is for GitHub's repo social preview) |
-| `tests/`                     | Pytest suite for `clustering.py`, `database.py`, and perceptual hashing |
-| `.github/workflows/tests.yml`| CI: runs the test suite on Python 3.10-3.12       |
+| `tests/`                     | Pytest suite: clustering, database, data safety, EXIF, hashing, model download, headless GUI |
+| `.github/workflows/tests.yml`| CI: runs the test suite on Python 3.10-3.12, plus a lint job |
 
 ## Storage
 
@@ -240,11 +268,36 @@ runners, before anything is attached to a release.
   the app is honest about *which* photos are near-duplicates and gets out
   of the way of the decision about which one to keep — that's a conscious
   scope cut, not an oversight, but it's the first thing worth building next.
-- Automated GUI interaction tests (the GUI is currently verified manually
-  under an offscreen Qt platform, screenshotted and inspected, rather than
-  covered by `pytest`). The clustering math and the database are the parts
-  I'd actually lose sleep over being wrong, so that's where the automated
-  coverage went first.
+- Deeper automated GUI interaction tests. `tests/test_gui_smoke.py` runs
+  headless smoke tests of the real `MainWindow` (gallery, people and tag
+  filters, recluster, lightbox construction); interactions such as lightbox
+  zoom/pan and gallery keyboard navigation are not covered by automated
+  tests.
+
+## License
+
+The code in this repository is MIT licensed (see [LICENSE](LICENSE)).
+
+The repository does not contain the model weights; they are downloaded
+from the OpenCV Zoo and carry their own licenses. The model licenses below
+are those stated in opencv/opencv_zoo, which could not be reached from the
+environment this was written in, so check the `LICENSE` file next to each
+model there before redistributing. The dependency licenses are taken from
+the installed packages' metadata.
+
+| Component | License | Notes |
+|---|---|---|
+| YuNet (`face_detection_yunet_2023mar.onnx`) | MIT | |
+| SFace (`face_recognition_sface_2021dec.onnx`) | Apache-2.0 | Redistribution (e.g. a packaged build that bundles it) must include the Apache-2.0 license text. |
+| PySide6 / Qt | LGPL-3.0 (or GPL, or commercial) | Packaged builds must follow the LGPL: Qt stays dynamically linked (the PyInstaller onedir build does this), ship the license text, and let users replace the Qt libraries. |
+| opencv-python-headless | Apache-2.0 | The wheels bundle third-party libraries, including FFmpeg (LGPL-2.1); see `LICENSE-3RD-PARTY.txt` in the installed package. |
+| NumPy | BSD-3-Clause (plus bundled permissive licenses) | |
+| Pillow | MIT-CMU (HPND) | |
+
+None of these restricts commercial use as far as their stated licenses go.
+The licenses of the models' training data are not stated here and were not
+reviewed. Face embeddings are biometric-like data; how you may process
+photos of other people depends on the law where you live.
 
 ---
 
