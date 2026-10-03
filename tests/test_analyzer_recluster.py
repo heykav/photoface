@@ -40,7 +40,7 @@ def test_first_recluster_creates_one_person_per_identity(db):
     a = _assignment(db)
     assert len({a[i] for i in ids}) == 3
     for lab in range(3):
-        assert len({a[i] for i, l in zip(ids, labels) if l == lab}) == 1
+        assert len({a[i] for i, lbl in zip(ids, labels, strict=True) if lbl == lab}) == 1
 
 
 def test_recluster_is_idempotent_and_does_not_churn_people(db):

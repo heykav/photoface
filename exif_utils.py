@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, Optional, Tuple
 
-from PIL import ExifTags, Image
+from PIL import ExifTags, Image, ImageOps
 
 _EXIF_IFD = 0x8769
 _GPS_IFD = 0x8825
@@ -88,6 +88,17 @@ def parse_exif_date(value: Any) -> Optional[str]:
         return datetime(*(int(g) for g in m.groups())).isoformat()
     except ValueError:
         return None
+
+
+def upright(img: Image.Image) -> Image.Image:
+    """`img` rotated/flipped as its EXIF Orientation tag says it should be
+    displayed (what `cv2.imread` does by default, so face boxes, thumbnails
+    and hashes all use the same coordinates). Returned unchanged if the tag
+    is missing or unreadable."""
+    try:
+        return ImageOps.exif_transpose(img)
+    except Exception:  # noqa: BLE001 - a broken tag must not hide the photo
+        return img
 
 
 def extract_exif(path: Path) -> Tuple[Optional[str], Optional[float], Optional[float]]:

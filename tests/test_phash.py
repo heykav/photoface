@@ -1,5 +1,4 @@
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -21,14 +20,14 @@ def _hamming(a: str, b: str) -> int:
 
 
 class TestComputePhash:
-    def test_same_image_same_hash(self, tmp_path=Path(tempfile.mkdtemp())):
+    def test_same_image_same_hash(self, tmp_path):
         rng = np.random.RandomState(1)
         arr = rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)
         p1 = _save(tmp_path, "a.png", arr)
         p2 = _save(tmp_path, "b.png", arr)
         assert compute_phash(p1) == compute_phash(p2)
 
-    def test_hash_is_16_hex_chars(self, tmp_path=Path(tempfile.mkdtemp())):
+    def test_hash_is_16_hex_chars(self, tmp_path):
         arr = np.random.RandomState(2).randint(0, 255, (64, 64, 3), dtype=np.uint8)
         p = _save(tmp_path, "a.png", arr)
         h = compute_phash(p)
@@ -36,7 +35,7 @@ class TestComputePhash:
         assert len(h) == 16
         int(h, 16)  # must parse as hex
 
-    def test_very_different_images_far_apart(self, tmp_path=Path(tempfile.mkdtemp())):
+    def test_very_different_images_far_apart(self, tmp_path):
         # This dHash only compares horizontally-adjacent pixels, so it's
         # deliberately tested here with two unrelated photos (independent
         # random noise) rather than a crafted pattern - a pure vertical
@@ -52,7 +51,7 @@ class TestComputePhash:
         h1, h2 = compute_phash(p1), compute_phash(p2)
         assert _hamming(h1, h2) > 20
 
-    def test_slightly_modified_image_close_hash(self, tmp_path=Path(tempfile.mkdtemp())):
+    def test_slightly_modified_image_close_hash(self, tmp_path):
         rng = np.random.RandomState(3)
         base = rng.randint(50, 200, (64, 64, 3), dtype=np.uint8)
         modified = base.copy()

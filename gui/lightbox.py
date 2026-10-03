@@ -4,7 +4,7 @@ import webbrowser
 from typing import Optional
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QFont, QImageReader, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QDialog, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsScene,
     QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout, QLabel,
@@ -125,7 +125,11 @@ class LightboxDialog(QDialog):
         photo = item["photo_row"]
         self.title_label.setText(photo["path"].split("/")[-1])
 
-        pix = QPixmap(photo["path"])
+        # EXIF orientation applied, like cv2.imread during analysis, so the
+        # stored face boxes land on the right pixels
+        reader = QImageReader(photo["path"])
+        reader.setAutoTransform(True)
+        pix = QPixmap.fromImage(reader.read())
         if pix.isNull():
             self.meta_label.setText("(could not load image)")
             return

@@ -195,3 +195,17 @@ class TestTransactions:
                     db.create_person("x", "#000000")
                 raise RuntimeError("outer fails after inner finished")
         assert db.all_persons() == []
+
+
+class TestIndices:
+    def test_person_filter_uses_covering_face_index(self, db):
+        plan = db.conn.execute(
+            "EXPLAIN QUERY PLAN SELECT DISTINCT p.* FROM photos p "
+            "JOIN faces f0 ON f0.photo_id = p.id AND f0.person_id = ?", (1,)).fetchall()
+        details = " ".join(row[3] for row in plan)
+        assert "idx_faces_person_photo" in details
+
+    def test_set_photo_phash(self, db):
+        pid = db.upsert_photo("/a.jpg", 1.0, 1, 1, 1, None, None, None, 1.0)
+        db.set_photo_phash(pid, "00ff00ff00ff00ff")
+        assert db.get_photo_by_path("/a.jpg")["phash"] == "00ff00ff00ff00ff"

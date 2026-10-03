@@ -1,0 +1,243 @@
+{
+  "threshold": 0.363,
+  "seeds": 5,
+  "greedy_orders": 4,
+  "clustering": [
+    {
+      "scenario": "separated",
+      "identities": 3,
+      "faces": 90,
+      "sigma": 0.5,
+      "overlap": 0.0,
+      "recluster": {
+        "purity": 1.0,
+        "purity_min": 1.0,
+        "completeness": 1.0,
+        "completeness_min": 1.0,
+        "clusters": 3.0
+      },
+      "greedy": {
+        "purity": 1.0,
+        "purity_min": 1.0,
+        "completeness": 1.0,
+        "completeness_min": 1.0,
+        "clusters": 3.0
+      }
+    },
+    {
+      "scenario": "mild overlap",
+      "identities": 3,
+      "faces": 90,
+      "sigma": 0.9,
+      "overlap": 0.3,
+      "recluster": {
+        "purity": 1.0,
+        "purity_min": 1.0,
+        "completeness": 1.0,
+        "completeness_min": 1.0,
+        "clusters": 3.0
+      },
+      "greedy": {
+        "purity": 1.0,
+        "purity_min": 1.0,
+        "completeness": 1.0,
+        "completeness_min": 1.0,
+        "clusters": 3.0
+      }
+    },
+    {
+      "scenario": "unbalanced sizes",
+      "identities": 7,
+      "faces": 90,
+      "sigma": 0.9,
+      "overlap": 0.3,
+      "recluster": {
+        "purity": 1.0,
+        "purity_min": 1.0,
+        "completeness": 1.0,
+        "completeness_min": 1.0,
+        "clusters": 7.0
+      },
+      "greedy": {
+        "purity": 0.994,
+        "purity_min": 0.967,
+        "completeness": 0.999,
+        "completeness_min": 0.989,
+        "clusters": 6.5
+      }
+    },
+    {
+      "scenario": "moderate overlap",
+      "identities": 3,
+      "faces": 90,
+      "sigma": 1.2,
+      "overlap": 0.5,
+      "recluster": {
+        "purity": 1.0,
+        "purity_min": 1.0,
+        "completeness": 0.967,
+        "completeness_min": 0.944,
+        "clusters": 5.6
+      },
+      "greedy": {
+        "purity": 0.982,
+        "purity_min": 0.667,
+        "completeness": 0.988,
+        "completeness_min": 0.933,
+        "clusters": 3.6
+      }
+    },
+    {
+      "scenario": "near-coincident",
+      "identities": 3,
+      "faces": 90,
+      "sigma": 1.0,
+      "overlap": 0.8,
+      "recluster": {
+        "purity": 0.333,
+        "purity_min": 0.333,
+        "completeness": 1.0,
+        "completeness_min": 1.0,
+        "clusters": 1.0
+      },
+      "greedy": {
+        "purity": 0.376,
+        "purity_min": 0.333,
+        "completeness": 0.992,
+        "completeness_min": 0.856,
+        "clusters": 1.1
+      }
+    },
+    {
+      "scenario": "very noisy",
+      "identities": 3,
+      "faces": 90,
+      "sigma": 1.5,
+      "overlap": 0.6,
+      "recluster": {
+        "purity": 0.989,
+        "purity_min": 0.967,
+        "completeness": 0.242,
+        "completeness_min": 0.167,
+        "clusters": 38.4
+      },
+      "greedy": {
+        "purity": 0.97,
+        "purity_min": 0.667,
+        "completeness": 0.864,
+        "completeness_min": 0.756,
+        "clusters": 10.2
+      }
+    }
+  ],
+  "duplicates": {
+    "scenes": 60,
+    "pairs": 1770,
+    "transforms": {
+      "resize to 50%": {
+        "median": 0.0,
+        "max": 5,
+        "within_2": 0.967,
+        "within_4": 0.983,
+        "within_6": 1.0,
+        "within_8": 1.0
+      },
+      "resize to 200%": {
+        "median": 0.0,
+        "max": 2,
+        "within_2": 1.0,
+        "within_4": 1.0,
+        "within_6": 1.0,
+        "within_8": 1.0
+      },
+      "JPEG quality 90": {
+        "median": 0.0,
+        "max": 7,
+        "within_2": 0.9,
+        "within_4": 0.967,
+        "within_6": 0.983,
+        "within_8": 1.0
+      },
+      "JPEG quality 70": {
+        "median": 1.0,
+        "max": 5,
+        "within_2": 0.783,
+        "within_4": 0.9,
+        "within_6": 1.0,
+        "within_8": 1.0
+      },
+      "JPEG quality 40": {
+        "median": 1.0,
+        "max": 6,
+        "within_2": 0.767,
+        "within_4": 0.883,
+        "within_6": 1.0,
+        "within_8": 1.0
+      },
+      "crop 2% per side": {
+        "median": 2.0,
+        "max": 5,
+        "within_2": 0.717,
+        "within_4": 0.95,
+        "within_6": 1.0,
+        "within_8": 1.0
+      },
+      "crop 5% per side": {
+        "median": 3.0,
+        "max": 10,
+        "within_2": 0.383,
+        "within_4": 0.717,
+        "within_6": 0.867,
+        "within_8": 0.95
+      },
+      "crop 10% per side": {
+        "median": 6.0,
+        "max": 18,
+        "within_2": 0.15,
+        "within_4": 0.333,
+        "within_6": 0.55,
+        "within_8": 0.733
+      },
+      "brightness -20%": {
+        "median": 1.0,
+        "max": 7,
+        "within_2": 0.717,
+        "within_4": 0.867,
+        "within_6": 0.967,
+        "within_8": 1.0
+      },
+      "brightness +20%": {
+        "median": 3.5,
+        "max": 29,
+        "within_2": 0.417,
+        "within_4": 0.567,
+        "within_6": 0.667,
+        "within_8": 0.75
+      },
+      "contrast +30%": {
+        "median": 3.5,
+        "max": 30,
+        "within_2": 0.4,
+        "within_4": 0.583,
+        "within_6": 0.717,
+        "within_8": 0.8
+      },
+      "mirrored": {
+        "median": 32.0,
+        "max": 60,
+        "within_2": 0.017,
+        "within_4": 0.033,
+        "within_6": 0.033,
+        "within_8": 0.033
+      }
+    },
+    "unrelated": {
+      "median": 32.0,
+      "max": 60,
+      "within_2": 0.0,
+      "within_4": 0.005,
+      "within_6": 0.008,
+      "within_8": 0.012
+    }
+  }
+}
