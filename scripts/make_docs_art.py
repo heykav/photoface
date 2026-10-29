@@ -22,16 +22,17 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parent.parent
 
-FONT = "-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
-MONO = "ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+SERIF = "Georgia, 'DejaVu Serif', serif"
+MONO = "'DejaVu Sans Mono', Menlo, Consolas, monospace"
+FONT = MONO  # body text in the diagrams is monospace; titles use SERIF
 
 THEMES = {
-    "dark": dict(bg="#18191c", panel="#232427", line="#3a3c43", text="#e7e8ea",
-                 muted="#a0a3aa", accent="#5b8cff", warn="#f58231", ok="#3fb950",
-                 badge_text="#ffffff", token_bg="#2b2c31"),
-    "light": dict(bg="#ffffff", panel="#f4f5f7", line="#c9ccd3", text="#1f2328",
-                  muted="#57606a", accent="#2f5fd6", warn="#b35309", ok="#1a7f37",
-                  badge_text="#ffffff", token_bg="#e9ebef"),
+    "dark": dict(bg="#090A09", panel="#0E100E", line="#1F231F", text="#E9ECE6",
+                 muted="#8A918A", accent="#00FF66", accent2="#B6FF2E", warn="#F5A524",
+                 ok="#00FF66", badge_text="#04120A", token_bg="#151815", red="#FF6B5E"),
+    "light": dict(bg="#F4F5F2", panel="#FFFFFF", line="#D7DAD3", text="#14170F",
+                  muted="#5B635B", accent="#0B8A3E", accent2="#5E8A00", warn="#B35309",
+                  ok="#0B8A3E", badge_text="#FFFFFF", token_bg="#ECEEE8", red="#C23B2E"),
 }
 # same fictional avatar colours as scripts/make_screenshots.py
 TOKENS = [("#e96076", "ring"), ("#2eb0a8", "triangle"), ("#f0ac30", "square"),
@@ -88,30 +89,53 @@ def svg_open(w: int, h: int, title: str, desc: str, t: dict) -> str:
             f'<rect width="{w}" height="{h}" fill="{t["bg"]}"/>')
 
 
+def chrome(w: int, h: int, title: str, t: dict) -> str:
+    """Terminal-window frame: rounded panel, title bar and three dots."""
+    return (f'<rect x="24" y="24" width="{w - 48}" height="{h - 48}" rx="12" fill="{t["panel"]}" stroke="{t["line"]}"/>'
+            f'<path d="M24 64H{w - 24}" stroke="{t["line"]}"/>'
+            f'<circle cx="46" cy="44" r="5.5" fill="{t["red"]}"/><circle cx="66" cy="44" r="5.5" fill="{t["accent2"]}"/>'
+            f'<circle cx="86" cy="44" r="5.5" fill="{t["accent"]}"/>'
+            f'<text x="{w / 2}" y="49" text-anchor="middle" font-family="{MONO}" font-size="12" fill="{t["muted"]}">{esc(title)}</text>')
+
+
+NO_MOTION = "@media (prefers-reduced-motion:reduce){*{animation:none!important}}"
+
+
 def hero(t: dict) -> str:
-    w, h = 1280, 320
+    w, h = 1280, 440
     out = [svg_open(w, h, "photoface",
-                    "photoface: sort a photo library by who is in it, entirely on your own "
-                    "machine. Illustration of faceless avatar tokens grouped into people.", t)]
-    out.append(f'<text x="72" y="140" font-family="{FONT}" font-size="76" font-weight="700" '
-               f'fill="{t["text"]}">photoface</text>')
-    out.append(f'<text x="74" y="188" font-family="{FONT}" font-size="26" fill="{t["text"]}">'
-               'Find the people in your photo library.</text>')
-    out.append(f'<text x="74" y="224" font-family="{FONT}" font-size="26" fill="{t["accent"]}" '
-               'font-weight="600">Without uploading a single photo.</text>')
-    out.append(f'<text x="74" y="272" font-family="{FONT}" font-size="17" fill="{t["muted"]}">'
-               'PySide6 desktop app  |  YuNet + SFace  |  SQLite  |  runs locally</text>')
-    # illustration: three groups of avatar tokens
-    x0, y0, cw, ch, gap = 700, 36, 96, 116, 14
-    for i, (col, kind) in enumerate(TOKENS):
-        col_i, row_i = i % 3, i // 3
-        out.append(token_card(x0 + col_i * (cw + gap), y0 + row_i * (ch + gap), cw, ch, col, kind, t))
-    out.append(f'<text x="{x0}" y="{y0 + 2 * ch + gap + 30}" font-family="{FONT}" font-size="14" '
-               f'fill="{t["muted"]}">Illustration: synthetic avatar tokens, not real people.</text>')
-    out.append(f'<rect x="1080" y="{y0}" width="118" height="34" rx="17" fill="none" '
-               f'stroke="{t["ok"]}" stroke-width="1.5"/>'
-               f'<text x="1139" y="{y0 + 23}" text-anchor="middle" font-family="{FONT}" font-size="15" '
-               f'font-weight="600" fill="{t["ok"]}">100% local</text>')
+                    "photoface: a terminal-style banner. Six faceless avatar tokens, an illustration "
+                    "with no real people, regroup into three people. Tagline: find the people in "
+                    "your photo library, without uploading a single photo.", t)]
+    out.append(chrome(w, h, "photoface ~ analyze ./photos", t))
+    out.append(f'<text x="72" y="118" font-family="{MONO}" font-size="14" fill="{t["accent"]}">$ photoface analyze ./photos'
+               f'</text><rect class="cur" x="320" y="105" width="9" height="16" fill="{t["accent"]}"/>')
+    out.append(f'<text x="72" y="204" font-family="{SERIF}" font-size="78" font-weight="700" fill="{t["text"]}">photoface</text>')
+    out.append(f'<text x="74" y="256" font-family="{SERIF}" font-size="28" fill="{t["text"]}">Find the people in your photo library.</text>')
+    out.append(f'<text x="74" y="296" font-family="{SERIF}" font-size="28" font-style="italic" fill="{t["accent"]}">Without uploading a single photo.</text>')
+    out.append(f'<text x="74" y="350" font-family="{MONO}" font-size="13" fill="{t["muted"]}">PySide6 desktop app | YuNet + SFace | SQLite | runs locally</text>')
+    out.append(f'<text x="74" y="372" font-family="{MONO}" font-size="12" fill="{t["muted"]}">Illustration: synthetic avatar tokens, not real people.</text>')
+    # three people, two photos each. Resting state is grouped; the loop scatters and regroups.
+    cw, ch, gx, gy = 96, 116, 22, 18
+    x0, y0 = 760, 112
+    scatter = [(2, 1), (0, 0), (1, 1), (2, 0), (0, 1), (1, 0)]   # interleaved slots, (col,row)
+    css = []
+    for i in range(6):
+        person, copy = i // 2, i % 2
+        col, kind = TOKENS[person]
+        gxp, gyp = x0 + person * (cw + gx), y0 + copy * (ch + gy)
+        sc, sr = scatter[i]
+        dx, dy = (x0 + sc * (cw + gx)) - gxp, (y0 + sr * (ch + gy)) - gyp
+        css.append(f'.t{i}{{animation:m{i} 9s ease-in-out infinite}}'
+                   f'@keyframes m{i}{{0%,58%{{transform:translate(0,0)}}66%,78%{{transform:translate({dx}px,{dy}px)}}90%,100%{{transform:translate(0,0)}}}}')
+        out.append(f'<g class="t{i}">{token_card(gxp, gyp, cw, ch, col, kind, t)}</g>')
+    for person in range(3):
+        out.append(f'<text x="{x0 + person * (cw + gx) + cw / 2}" y="{y0 + 2 * ch + gy + 30}" text-anchor="middle" '
+                   f'font-family="{MONO}" font-size="12" fill="{t["muted"]}">person {person + 1}</text>')
+    out.append(f'<rect x="1090" y="80" width="132" height="28" rx="14" fill="none" stroke="{t["ok"]}" stroke-width="1.5"/>'
+               f'<text x="1156" y="99" text-anchor="middle" font-family="{MONO}" font-size="13" font-weight="700" fill="{t["ok"]}">100% local</text>')
+    css.append(f'.cur{{animation:bl 1.2s steps(1) infinite}}@keyframes bl{{50%{{opacity:0}}}}{NO_MOTION}')
+    out.insert(1, f'<style>{"".join(css)}</style>')
     out.append("</svg>")
     return "".join(out)
 
@@ -126,7 +150,7 @@ STAGES = [
     ("4", "Greedy online|clustering", "clustering.py",
      ["Cosine sim. to each person's", "running mean: join if > 0.363", "else start a new person"]),
     ("5", "Average-linkage|recluster", "clustering.py",
-     ["Re-cluster every face together", "Merge while avg. sim. >= t", "One transaction, ids stay stable"]),
+     ["Re-cluster every face together", "Merge while avg. sim. >= t", "One transaction, stable ids"]),
     ("6", "Pinned corrections|preserved", "clustering.py",
      ["Hand-edited faces are anchors", "Never moved by reclustering", "Two pinned people never merge"]),
     ("7", "SQLite", "database.py",
@@ -135,7 +159,7 @@ STAGES = [
 
 
 def pipeline(t: dict) -> str:
-    w, h = 1280, 700
+    w, h = 1280, 780
     bw, bh, gap = 250, 200, 50
     xs = [65 + i * (bw + gap) for i in range(4)]
     y1, y2 = 160, 420
@@ -143,10 +167,13 @@ def pipeline(t: dict) -> str:
                     "Scan folder, detect faces with YuNet, embed with SFace, greedy online "
                     "clustering, average-linkage reclustering, pinned corrections preserved, "
                     "stored in SQLite. Everything runs locally.", t)]
-    out.append(f'<text x="40" y="52" font-family="{FONT}" font-size="30" font-weight="700" '
+    out.insert(1, f'<style>.fl{{stroke-dasharray:7 6;animation:fl 1.4s linear infinite}}@keyframes fl{{to{{stroke-dashoffset:-13}}}}{NO_MOTION}</style>')
+    out.append(chrome(w, h, "photoface ~ pipeline", t))
+    out.append('<g transform="translate(0,44)">')
+    out.append(f'<text x="40" y="52" font-family="{SERIF}" font-size="32" font-weight="700" '
                f'fill="{t["text"]}">How photoface analyzes a folder</text>')
     out.append(f'<rect x="20" y="84" width="1240" height="566" rx="18" fill="none" '
-               f'stroke="{t["ok"]}" stroke-width="2" stroke-dasharray="10 7"/>')
+               f'stroke="{t["ok"]}" stroke-width="1.5" stroke-dasharray="10 7" opacity=".7"/>')
     out.append(f'<text x="44" y="122" font-family="{FONT}" font-size="15" font-weight="700" '
                f'letter-spacing="1.5" fill="{t["ok"]}">EVERYTHING BELOW RUNS ON YOUR MACHINE</text>')
 
@@ -160,7 +187,7 @@ def pipeline(t: dict) -> str:
                    f'font-size="16" font-weight="700" fill="{t["badge_text"]}">{num}</text>')
         tl = title.split("|")
         for j, line in enumerate(tl):
-            out.append(f'<text x="{x + 52}" y="{y + 36 + j * 22}" font-family="{FONT}" font-size="18" '
+            out.append(f'<text x="{x + 52}" y="{y + 36 + j * 22}" font-family="{SERIF}" font-size="19" '
                        f'font-weight="700" fill="{t["text"]}">{esc(line)}</text>')
         off = 22 * (len(tl) - 1)
         out.append(f'<text x="{x + 18}" y="{y + 68 + off}" font-family="{MONO}" font-size="13" '
@@ -171,7 +198,7 @@ def pipeline(t: dict) -> str:
 
     def arrow(x1: float, y1: float, x2: float, y2: float) -> None:
         c = t["muted"]
-        out.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{c}" stroke-width="2.5"/>')
+        out.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{c}" stroke-width="2.5" class="fl"/>')
         if x2 != x1:   # horizontal
             d = 1 if x2 > x1 else -1
             out.append(f'<polygon fill="{c}" points="{x2},{y2} {x2 - 11 * d},{y2 - 7} {x2 - 11 * d},{y2 + 7}"/>')
@@ -193,16 +220,16 @@ def pipeline(t: dict) -> str:
     x, y = xs[0], y2
     out.append(f'<rect x="{x}" y="{y}" width="{bw}" height="{bh}" rx="14" fill="none" '
                f'stroke="{t["ok"]}" stroke-width="1.5"/>')
-    out.append(f'<text x="{x + 18}" y="{y + 36}" font-family="{FONT}" font-size="19" '
+    out.append(f'<text x="{x + 18}" y="{y + 36}" font-family="{SERIF}" font-size="20" '
                f'font-weight="700" fill="{t["ok"]}">Private by design</text>')
     for k, line in enumerate(["Photos, embeddings and the", "database stay on this disk.",
                               "No photoface server exists.", "Only network use: the one-", "time model download."]):
-        out.append(f'<text x="{x + 18}" y="{y + 68 + k * 24}" font-family="{FONT}" font-size="14.5" '
+        out.append(f'<text x="{x + 18}" y="{y + 68 + k * 24}" font-family="{FONT}" font-size="12.5" '
                    f'fill="{t["muted"]}">{esc(line)}</text>')
     out.append(f'<text x="40" y="680" font-family="{FONT}" font-size="13" fill="{t["muted"]}">'
                'Read from analyzer.py, clustering.py and database.py. t = similarity threshold '
                '(default 0.363, adjustable in Settings).</text>')
-    out.append("</svg>")
+    out.append("</g></svg>")
     return "".join(out)
 
 
@@ -210,24 +237,18 @@ def social_bg_svg() -> str:
     t = THEMES["dark"]
     w, h = 1280, 640
     o = [svg_open(w, h, "photoface social preview", "photoface", t)]
-    o.append(f'<rect width="{w}" height="{h}" fill="url(#g)"/>')
-    o.insert(1, '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
-                '<stop offset="0" stop-color="#1c1e24"/><stop offset="1" stop-color="#121316"/>'
-                '</linearGradient></defs>')
-    o.append(f'<text x="64" y="250" font-family="{FONT}" font-size="84" font-weight="700" '
-             f'fill="{t["text"]}">photoface</text>')
+    o.append(chrome(w, h, "photoface ~ analyze ./photos", t))
+    o.append(f'<text x="72" y="124" font-family="{MONO}" font-size="14" fill="{t["accent"]}">$ photoface analyze ./photos</text>')
+    o.append(f'<text x="70" y="236" font-family="{SERIF}" font-size="88" font-weight="700" fill="{t["text"]}">photoface</text>')
     for k, line in enumerate(["Find the people in your", "photo library. Without", "uploading a photo."]):
-        o.append(f'<text x="66" y="{318 + k * 44}" font-family="{FONT}" font-size="34" '
-                 f'fill="{t["accent"] if k == 2 else t["text"]}">{line}</text>')
-    o.append(f'<text x="66" y="486" font-family="{FONT}" font-size="20" fill="{t["muted"]}">'
-             'Desktop app  |  YuNet + SFace  |  SQLite</text>')
-    o.append(f'<rect x="66" y="512" width="150" height="38" rx="19" fill="none" '
-             f'stroke="{t["ok"]}" stroke-width="1.8"/><text x="141" y="537" text-anchor="middle" '
-             f'font-family="{FONT}" font-size="17" font-weight="600" fill="{t["ok"]}">100% local</text>')
-    for i, (col, kind) in enumerate(TOKENS[:3]):
-        o.append(token_card(66 + i * 62, 84, 50, 66, col, kind, t))
-    o.append(f'<text x="700" y="590" font-family="{FONT}" font-size="14" fill="{t["muted"]}">'
-             'Screenshot: synthetic demo data, not real people.</text>')
+        o.append(f'<text x="72" y="{306 + k * 42}" font-family="{SERIF}" font-size="31" '
+                 f'font-style="{"italic" if k == 2 else "normal"}" fill="{t["accent"] if k == 2 else t["text"]}">{line}</text>')
+    o.append(f'<text x="72" y="470" font-family="{MONO}" font-size="14" fill="{t["muted"]}">Desktop app | YuNet + SFace | SQLite</text>')
+    o.append(f'<rect x="72" y="500" width="150" height="36" rx="18" fill="none" '
+             f'stroke="{t["ok"]}" stroke-width="1.6"/><text x="147" y="523" text-anchor="middle" '
+             f'font-family="{MONO}" font-size="14" font-weight="700" fill="{t["ok"]}">100% local</text>')
+    o.append(f'<text x="640" y="604" font-family="{MONO}" font-size="12" fill="{t["muted"]}">'
+             'Screenshot of the real app on synthetic demo data, not real people.</text>')
     o.append("</svg>")
     return "".join(o)
 
@@ -244,7 +265,7 @@ def render_social(out: Path) -> None:
     shot = QPixmap(str(out / "people-overview.png"))
     if shot.isNull():
         raise SystemExit("run scripts/make_screenshots.py first (people-overview.png missing)")
-    rect = QRectF(600, 92, 640, shot.height() * 640 / shot.width())
+    rect = QRectF(640, 92, 560, shot.height() * 560 / shot.width())
     path = QPainterPath()
     path.addRoundedRect(rect, 14, 14)
     p.fillPath(path.translated(0, 6), QColor(0, 0, 0, 90))
