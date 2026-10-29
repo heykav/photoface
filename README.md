@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/img/hero-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/img/hero-light.svg">
-    <img alt="photoface banner: a row of faceless avatar tokens grouped into people, with the tagline 'Find the people in your photo library. Without uploading a single photo.' (illustration, not real people)" src="docs/img/hero-light.svg" width="100%">
+    <img alt="photoface banner in a terminal window: six faceless avatar tokens regroup into three people, with the tagline 'Find the people in your photo library. Without uploading a single photo.' (illustration, not real people)" src="docs/img/hero-light.svg" width="100%">
   </picture>
 </p>
 
@@ -85,6 +85,8 @@ Two earlier captures (also synthetic placeholder photos) are kept in
   <source media="(prefers-color-scheme: light)" srcset="docs/img/pipeline-light.svg">
   <img alt="Pipeline diagram: 1 scan the folder, 2 detect faces with YuNet, 3 embed with SFace, 4 greedy online clustering, 5 average-linkage recluster, 6 pinned corrections preserved, 7 stored in SQLite. Everything runs on the user's machine; the only network use is the one-time model download." src="docs/img/pipeline-light.svg" width="100%">
 </picture>
+
+The banner and pipeline diagram are animated SVGs (tokens regroup, arrows flow). The resting frame is the finished state, and `prefers-reduced-motion` turns the motion off. Both are drawn by `scripts/make_docs_art.py`.
 
 ## Features
 
